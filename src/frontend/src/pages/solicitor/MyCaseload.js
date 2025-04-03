@@ -14,7 +14,7 @@ import {
   Tabs,
   Tab,
 } from '@mui/material';
-import { format } from 'date-fns';
+import { format, isValid, parseISO } from 'date-fns';
 import axiosInstance from '../../utils/axios';
 
 const TabPanel = (props) => {
@@ -64,6 +64,17 @@ const MyCaseload = () => {
 
   const handleViewCase = (caseId) => {
     navigate(`/solicitor/cases/${caseId}`);
+  };
+
+  // Helper function to safely format dates
+  const formatDate = (dateString) => {
+    if (!dateString) return 'N/A';
+    
+    const date = typeof dateString === 'string' ? parseISO(dateString) : new Date(dateString);
+    
+    if (!isValid(date)) return 'Invalid date';
+    
+    return format(date, 'PPP');
   };
 
   if (loading) {
@@ -127,13 +138,13 @@ const MyCaseload = () => {
                     </Box>
                     
                     <Typography variant="body2" color="textSecondary" gutterBottom>
-                      Client: {caseItem.client?.ClientUser ?
-                        `${caseItem.client.ClientUser.firstName} ${caseItem.client.ClientUser.lastName}` :
+                      Client: {caseItem.client?.User ?
+                        caseItem.client.User.email :
                         'No client info'}
                     </Typography>
                     
                     <Typography variant="body2" color="textSecondary" gutterBottom>
-                      Updated: {format(new Date(caseItem.updatedAt), 'PPP')}
+                      Updated: {formatDate(caseItem.updatedAt)}
                     </Typography>
 
                     <Typography variant="body2" color="textSecondary">
@@ -170,18 +181,29 @@ const MyCaseload = () => {
               <Grid item xs={12} sm={6} md={4} key={caseItem.id}>
                 <Card>
                   <CardContent>
-                    <Typography variant="h6" component="h2" gutterBottom>
-                      {caseItem.caseNumber}
-                    </Typography>
+                    <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+                      <Typography variant="h6" component="h2">
+                        {caseItem.caseNumber}
+                      </Typography>
+                      <Chip
+                        label="CLOSED"
+                        color="default"
+                        size="small"
+                      />
+                    </Box>
                     
                     <Typography variant="body2" color="textSecondary" gutterBottom>
-                      Client: {caseItem.client?.ClientUser ?
-                        `${caseItem.client.ClientUser.firstName} ${caseItem.client.ClientUser.lastName}` :
+                      Client: {caseItem.client?.User ?
+                        caseItem.client.User.email :
                         'No client info'}
                     </Typography>
                     
                     <Typography variant="body2" color="textSecondary" gutterBottom>
-                      Closed: {format(new Date(caseItem.closedAt), 'PPP')}
+                      Closed: {formatDate(caseItem.closedAt || caseItem.updatedAt)}
+                    </Typography>
+
+                    <Typography variant="body2" color="textSecondary">
+                      Area of Law: {caseItem.type || 'Not specified'}
                     </Typography>
                   </CardContent>
                   

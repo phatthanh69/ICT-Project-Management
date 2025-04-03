@@ -123,7 +123,7 @@ const AvailableCases = () => {
                   </Typography>
 
                   <Typography variant="body2" color="textSecondary">
-                    Area of Law: {caseItem.areaOfLaw}
+                    Area of Law: {caseItem.type}
                   </Typography>
                 </CardContent>
                 

@@ -267,17 +267,23 @@ router.get('/', authenticateToken, async (req, res) => {
       where.clientId = userId;
     } else if (userRole === 'solicitor') {
       // Handle solicitor-specific queries
+      // Fetch solicitor details for specialization check
+      const solicitor = await Solicitor.findByPk(userId);
+      if (!solicitor) {
+        console.error('Solicitor not found:', userId);
+        return res.status(404).json({ message: 'Solicitor not found' });
+      }
+
       if (assigned === 'true') {
         // Only show cases assigned to this solicitor (my-caseload)
         where.assignedSolicitorId = userId;
+      } else if (assigned === 'false') {
+        // Show only unassigned cases matching specialization
+        where.assignedSolicitorId = null;
+        where.status = 'OPEN';
+        where.type = { [Op.in]: solicitor.specializations };
       } else {
-        // Fetch solicitor details for specialization check
-        const solicitor = await Solicitor.findByPk(userId);
-        if (!solicitor) {
-          console.error('Solicitor not found:', userId);
-          return res.status(404).json({ message: 'Solicitor not found' });
-        }
-
+        // Show both assigned and available cases
         where[Op.or] = [
           { assignedSolicitorId: userId },
           {
@@ -555,6 +561,82 @@ router.post('/:id/assign',
       });
     }
 });
+
+// Admin reassign case to another solicitor
+router.post('/:id/reassign',
+  authenticateToken,
+  async (req, res, next) => {
+    // Only allow admins
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Only admins can reassign cases' });
+    }
+    next();
+  },
+  async (req, res) => {
+    try {
+      const caseId = req.params.id;
+      const { solicitorId } = req.body;
+
+      // Fetch the case
+      const caseItem = await Case.findByPk(caseId);
+      if (!caseItem) {
+        return res.status(404).json({ message: 'Case not found' });
+      }
+
+      // Update case assignment
+      const updates = {
+        assignedSolicitorId: solicitorId || null,
+        status: solicitorId ? 'IN_PROGRESS' : 'OPEN'
+      };
+
+      // Use transaction for consistency
+      const { sequelize } = require('../models');
+      const result = await sequelize.transaction(async (t) => {
+        // Update the case
+        await caseItem.update(updates, { transaction: t });
+
+        // Add timeline entry
+        await Timeline.create({
+          caseId: caseId,
+          action: solicitorId ? 'Case reassigned' : 'Case unassigned',
+          performedBy: req.user.id,
+          details: {
+            previousSolicitorId: caseItem.assignedSolicitorId,
+            newSolicitorId: solicitorId
+          }
+        }, { transaction: t });
+
+        // Fetch updated case with associations
+        return await Case.findByPk(caseId, {
+          include: [
+            {
+              model: Timeline,
+              as: 'activities',
+              order: [['createdAt', 'DESC']]
+            },
+            {
+              model: Solicitor,
+              as: 'assignedSolicitor',
+              include: [{
+                model: User,
+                attributes: ['id', 'email']
+              }]
+            }
+          ],
+          transaction: t
+        });
+      });
+
+      res.json(result);
+    } catch (error) {
+      console.error('Error reassigning case:', error);
+      res.status(500).json({
+        message: 'Error reassigning case',
+        error: process.env.NODE_ENV === 'development' ? error.message : undefined
+      });
+    }
+  }
+);
 
 // Accept a case (for solicitors)
 router.post('/:id/accept',

@@ -2,7 +2,49 @@ const express = require('express');
 const router = express.Router();
 const { authenticateToken } = require('./auth');
 const { Case, Solicitor, Client } = require('../models');
+const { User } = require('../models'); // Add User model
 const { Op } = require('sequelize');
+
+
+// Get list of solicitors (e.g., for admin reassignment)
+router.get('/', authenticateToken, async (req, res) => {
+  try {
+    // Only admins should access the full list for reassignment
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Access denied' });
+    }
+
+    const { verified, active } = req.query;
+    let whereClause = {};
+
+    if (verified !== undefined) {
+      whereClause.verified = verified === 'true';
+    }
+    // Assuming 'active' status is managed elsewhere or implied by 'verified'
+    // Add active filter if your Solicitor model has an 'active' field:
+    // if (active !== undefined) {
+    //   whereClause.active = active === 'true';
+    // }
+
+    const solicitors = await Solicitor.findAll({
+      where: whereClause,
+      include: [{
+        model: User, // Assuming User model is associated
+        attributes: ['id', 'firstName', 'lastName', 'email']
+      }],
+      order: [
+        // Order by user's last name, then first name
+        [User, 'lastName', 'ASC'],
+        [User, 'firstName', 'ASC']
+      ]
+    });
+
+    res.json(solicitors);
+  } catch (error) {
+    console.error('Error fetching solicitors:', error);
+    res.status(500).json({ message: 'Error fetching solicitors' });
+  }
+});
 
 // Get solicitor dashboard stats
 router.get('/dashboard', authenticateToken, async (req, res) => {
