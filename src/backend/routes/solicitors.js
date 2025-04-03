@@ -155,7 +155,11 @@ router.get('/suggested-cases', authenticateToken, async (req, res) => {
       include: [{
         model: Client,
         as: 'client',
-        attributes: ['firstName', 'lastName']
+        include: [{
+          model: User,
+          as: 'ClientUser', // Changed from 'User' to 'ClientUser'
+          attributes: ['firstName', 'lastName']
+        }]
       }],
       order: [
         ['priority', 'DESC'],

@@ -138,7 +138,7 @@ router.get('/urgent-cases', authenticateToken, isAdmin, async (req, res) => {
           as: 'client',
           include: [{
             model: User,
-            as: 'User',
+            as: 'ClientUser', // Changed from 'User' to 'ClientUser'
             attributes: ['firstName', 'lastName', 'email']
           }]
         },
@@ -147,8 +147,8 @@ router.get('/urgent-cases', authenticateToken, isAdmin, async (req, res) => {
           as: 'assignedSolicitor',
           include: [{
             model: User,
-            as: 'User',
-            attributes: ['firstName', 'lastName', 'email']
+            as: 'SolicitorUser', // Changed from 'User' to 'SolicitorUser'
+            attributes: ['firstName', 'lastName', 'email', 'phone']
           }]
         }
       ],

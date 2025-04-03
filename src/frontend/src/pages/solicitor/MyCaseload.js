@@ -112,7 +112,7 @@ const MyCaseload = () => {
             </Grid>
           ) : (
             activeCases.map((caseItem) => (
-              <Grid item xs={12} sm={6} md={4} key={caseItem._id}>
+              <Grid item xs={12} sm={6} md={4} key={caseItem.id}>
                 <Card>
                   <CardContent>
                     <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
@@ -127,7 +127,9 @@ const MyCaseload = () => {
                     </Box>
                     
                     <Typography variant="body2" color="textSecondary" gutterBottom>
-                      Client: {caseItem.client.name}
+                      Client: {caseItem.client?.ClientUser ?
+                        `${caseItem.client.ClientUser.firstName} ${caseItem.client.ClientUser.lastName}` :
+                        'No client info'}
                     </Typography>
                     
                     <Typography variant="body2" color="textSecondary" gutterBottom>
@@ -135,7 +137,7 @@ const MyCaseload = () => {
                     </Typography>
 
                     <Typography variant="body2" color="textSecondary">
-                      Area of Law: {caseItem.areaOfLaw}
+                      Area of Law: {caseItem.type}
                     </Typography>
                   </CardContent>
                   
@@ -143,7 +145,7 @@ const MyCaseload = () => {
                     <Button
                       size="small"
                       color="primary"
-                      onClick={() => handleViewCase(caseItem._id)}
+                      onClick={() => handleViewCase(caseItem.id)}
                     >
                       Manage Case
                     </Button>
@@ -165,7 +167,7 @@ const MyCaseload = () => {
             </Grid>
           ) : (
             closedCases.map((caseItem) => (
-              <Grid item xs={12} sm={6} md={4} key={caseItem._id}>
+              <Grid item xs={12} sm={6} md={4} key={caseItem.id}>
                 <Card>
                   <CardContent>
                     <Typography variant="h6" component="h2" gutterBottom>
@@ -173,7 +175,9 @@ const MyCaseload = () => {
                     </Typography>
                     
                     <Typography variant="body2" color="textSecondary" gutterBottom>
-                      Client: {caseItem.client.name}
+                      Client: {caseItem.client?.ClientUser ?
+                        `${caseItem.client.ClientUser.firstName} ${caseItem.client.ClientUser.lastName}` :
+                        'No client info'}
                     </Typography>
                     
                     <Typography variant="body2" color="textSecondary" gutterBottom>
@@ -184,7 +188,7 @@ const MyCaseload = () => {
                   <CardActions>
                     <Button
                       size="small"
-                      onClick={() => handleViewCase(caseItem._id)}
+                      onClick={() => handleViewCase(caseItem.id)}
                     >
                       View Details
                     </Button>

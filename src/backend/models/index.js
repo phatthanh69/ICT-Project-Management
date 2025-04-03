@@ -78,27 +78,8 @@ async function initializeDatabase() {
       as: 'assignedSolicitor' 
     });
     
-    // Add direct User-Case associations
-    User.hasMany(Case, {
-      foreignKey: 'clientId',
-      as: 'clientCases',
-      constraints: false
-    });
-    User.hasMany(Case, {
-      foreignKey: 'assignedSolicitorId',
-      as: 'solicitorCases',
-      constraints: false
-    });
-    Case.belongsTo(User, {
-      foreignKey: 'clientId',
-      as: 'clientUser',
-      constraints: false
-    });
-    Case.belongsTo(User, {
-      foreignKey: 'assignedSolicitorId',
-      as: 'solicitorUser',
-      constraints: false
-    });
+    // Cases are accessed through Client and Solicitor profiles
+    // No need for direct User-Case associations as they can be accessed through the profiles
 
     Case.hasMany(CaseActivity, {
       foreignKey: 'caseId',
@@ -127,23 +108,34 @@ async function initializeDatabase() {
       foreignKey: 'caseId'
     });
 
-    // Activity and Note User associations
-    User.hasMany(CaseActivity, { 
-      foreignKey: 'performedBy', 
-      as: 'activities' 
+    // Activity associations
+    User.hasMany(CaseActivity, {
+      foreignKey: 'performedBy',
+      as: 'activities'
     });
-    CaseActivity.belongsTo(User, { 
-      foreignKey: 'performedBy', 
-      as: 'actor' 
+    CaseActivity.belongsTo(User, {
+      foreignKey: 'performedBy',
+      as: 'performer'  // Changed to match the usage in routes
     });
     
-    User.hasMany(CaseNote, { 
-      foreignKey: 'createdBy', 
-      as: 'notes' 
+    // Note associations
+    User.hasMany(CaseNote, {
+      foreignKey: 'createdBy',
+      as: 'notes'
     });
-    CaseNote.belongsTo(User, { 
-      foreignKey: 'createdBy', 
-      as: 'author' 
+    CaseNote.belongsTo(User, {
+      foreignKey: 'createdBy',
+      as: 'author'  // Keeping consistent with routes
+    });
+
+    // Deadline associations
+    User.hasMany(CaseDeadline, {
+      foreignKey: 'createdBy',
+      as: 'deadlines'
+    });
+    CaseDeadline.belongsTo(User, {
+      foreignKey: 'createdBy',
+      as: 'author'  // Consistent with note associations
     });
 
     // Rating associations

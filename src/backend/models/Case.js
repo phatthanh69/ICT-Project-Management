@@ -236,18 +236,7 @@ CaseDeadline.init({
   timestamps: true
 });
 
-// Add associations after all models are defined
-const User = require('./User'); // Make sure to require the User model if not already done elsewhere
-
-// Add the association using the 'performer' alias to match what's used in dashboard.js
-CaseActivity.belongsTo(User, { 
-  foreignKey: 'performedBy', 
-  as: 'performer'
-});
-
-// Add this association for the Case model referenced in the activity log query
-CaseActivity.belongsTo(Case, { foreignKey: 'caseId' });
-
+// Export the models
 module.exports = {
   Case,
   CaseActivity,

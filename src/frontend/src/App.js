@@ -18,7 +18,7 @@ import ForgotPassword from './pages/auth/ForgotPassword';
 import ClientDashboard from './pages/client/Dashboard';
 import NewCase from './pages/client/NewCase';
 import MyCases from './pages/client/MyCases';
-import CaseDetails from './pages/client/CaseDetails';
+import CaseDetails from './pages/common/CaseDetails';
 
 // Solicitor Pages
 import SolicitorDashboard from './pages/solicitor/Dashboard';
@@ -30,7 +30,6 @@ import CaseManagement from './pages/solicitor/CaseManagement';
 import AdminDashboard from './pages/admin/Dashboard';
 import UserManagement from './pages/admin/UserManagement';
 import CaseOverview from './pages/admin/CaseOverview';
-import AdminCaseDetails from './pages/admin/CaseDetails';
 import Reports from './pages/admin/Reports';
 
 // Theme configuration
@@ -178,7 +177,7 @@ function App() {
               path="/solicitor/cases/:id"
               element={
                 <ProtectedRoute allowedRoles={['solicitor']}>
-                  <CaseManagement />
+                  <CaseDetails />
                 </ProtectedRoute>
               }
             />
@@ -212,7 +211,7 @@ function App() {
               path="/admin/cases/:id"
               element={
                 <ProtectedRoute allowedRoles={['admin']}>
-                  <AdminCaseDetails />
+                  <CaseDetails />
                 </ProtectedRoute>
               }
             />

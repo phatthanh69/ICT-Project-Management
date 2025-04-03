@@ -16,41 +16,73 @@ const checkCaseAccess = async (req, res, next) => {
     const userId = req.user.id;
     const userRole = req.user.role;
 
+    console.log('Checking case access:', { caseId, userId, role: userRole });
+
+    // Only fetch minimal case data needed for access check
     const caseItem = await Case.findByPk(caseId, {
-      include: [
-        { model: Timeline },
-        { model: Note }
-      ]
+      attributes: ['id', 'clientId', 'assignedSolicitorId', 'type', 'status'],
+      raw: true
     });
     
     if (!caseItem) {
+      console.log(`Case not found: ${caseId}`);
       return res.status(404).json({ message: 'Case not found' });
     }
 
     // Admin has access to all cases
     if (userRole === 'admin') {
-      req.caseItem = caseItem;
+      req.caseItem = { id: caseItem.id };
       return next();
     }
 
-    // Client can only access their own cases
-    if (userRole === 'client' && caseItem.clientId !== userId) {
+    // Client can access cases they created
+    if (userRole === 'client') {
+      if (caseItem.clientId === userId) {
+        req.caseItem = { id: caseItem.id };
+        return next();
+      }
+      console.log(`Access denied: Client ${userId} attempted to access case ${caseId}`);
       return res.status(403).json({ message: 'Access denied' });
     }
 
-    // Solicitor can access assigned cases or cases matching their specialization
+    // Solicitor access check
     if (userRole === 'solicitor') {
-      const solicitor = await Solicitor.findByPk(userId);
-      if (caseItem.assignedSolicitorId !== userId &&
-          !solicitor.specializations.includes(caseItem.type)) {
-        return res.status(403).json({ message: 'Access denied' });
+      // Direct access if assigned to case
+      if (caseItem.assignedSolicitorId === userId) {
+        req.caseItem = { id: caseItem.id };
+        return next();
       }
+      
+      // Check specialization match for unassigned cases
+      if (!caseItem.assignedSolicitorId) {
+        const solicitor = await Solicitor.findByPk(userId, {
+          attributes: ['specializations'],
+          raw: true
+        });
+        
+        if (!solicitor) {
+          console.error(`Solicitor profile not found: ${userId}`);
+          return res.status(404).json({ message: 'Solicitor profile not found' });
+        }
+        
+        if (solicitor.specializations.includes(caseItem.type)) {
+          req.caseItem = { id: caseItem.id };
+          return next();
+        }
+      }
+      
+      console.log(`Access denied: Solicitor ${userId} attempted to access case ${caseId}`);
+      return res.status(403).json({ message: 'Access denied' });
     }
 
-    req.caseItem = caseItem;
-    next();
+    console.log(`Access denied: User ${userId} with unrecognized role ${userRole}`);
+    return res.status(403).json({ message: 'Access denied' });
   } catch (error) {
-    res.status(500).json({ message: 'Error checking case access' });
+    console.error('Error checking case access:', error);
+    return res.status(500).json({
+      message: 'Error checking case access',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
   }
 };
 
@@ -132,7 +164,7 @@ router.post('/',
 
       // Fetch the created case with associated timeline
       const createdCase = await Case.findByPk(newCase.id, {
-        include: [{ model: Timeline }]
+        include: [{ model: Timeline, as: 'activities' }]
       });
 
       res.status(201).json(createdCase);
@@ -171,7 +203,7 @@ router.get('/', authenticateToken, async (req, res) => {
         as: 'client',
         include: [{
           model: User,
-          as: 'User',
+          as: 'User', // Changed from 'ClientUser' to 'User'
           attributes: ['id', 'firstName', 'lastName', 'email']
         }]
       },
@@ -180,7 +212,7 @@ router.get('/', authenticateToken, async (req, res) => {
         as: 'assignedSolicitor',
         include: [{
           model: User,
-          as: 'User',
+          as: 'User', // Changed from 'SolicitorUser' to 'User'
           attributes: ['id', 'firstName', 'lastName', 'email']
         }]
       }
@@ -262,48 +294,73 @@ router.get('/', authenticateToken, async (req, res) => {
 // Get specific case
 router.get('/:id', authenticateToken, checkCaseAccess, async (req, res) => {
   try {
-    const caseItem = await Case.findByPk(req.caseItem.id, {
+    // We already have the case with associations from checkCaseAccess middleware
+    // Just need to enhance it with additional associations if needed
+    const enhancedCase = await Case.findByPk(req.caseItem.id, {
       include: [
         {
           model: Client,
           as: 'client',
-          include: [{
-            model: User,
-            as: 'User',
-            attributes: ['id', 'firstName', 'lastName', 'email', 'phone']
-          }]
+          include: [
+            {
+              model: User,
+              attributes: ['id', 'firstName', 'lastName', 'email', 'phone']
+            }
+          ]
         },
         {
           model: Solicitor,
           as: 'assignedSolicitor',
-          include: [{
-            model: User,
-            as: 'User',
-            attributes: ['id', 'firstName', 'lastName', 'email', 'phone']
-          }]
+          include: [
+            {
+              model: User,
+              attributes: ['id', 'firstName', 'lastName', 'email', 'phone']
+            }
+          ]
         },
         {
           model: Timeline,
-          include: [{
-            model: User,
-            as: 'User',
-            attributes: ['id', 'firstName', 'lastName', 'role']
-          }]
+          as: 'activities',
+          separate: true,
+          include: [
+            {
+              model: User,
+              as: 'performer',
+              attributes: ['id', 'firstName', 'lastName', 'role']
+            }
+          ]
         },
         {
           model: Note,
-          include: [{
-            model: User,
-            as: 'User',
-            attributes: ['id', 'firstName', 'lastName', 'role']
-          }]
+          as: 'notes',
+          separate: true,
+          include: [
+            {
+              model: User,
+              as: 'author',
+              attributes: ['id', 'firstName', 'lastName', 'role']
+            }
+          ]
         }
+      ],
+      order: [
+        ['createdAt', 'DESC'],
+        [{ model: Timeline, as: 'activities' }, 'createdAt', 'DESC'],
+        [{ model: Note, as: 'notes' }, 'createdAt', 'DESC']
       ]
     });
 
-    res.json(caseItem);
+    if (!enhancedCase) {
+      return res.status(404).json({ message: 'Case not found' });
+    }
+
+    res.json(enhancedCase);
   } catch (error) {
-    res.status(500).json({ message: 'Error fetching case details' });
+    console.error('Error fetching case details:', error);
+    res.status(500).json({
+      message: 'Error fetching case details',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
   }
 });
 
@@ -346,8 +403,8 @@ router.patch('/:id',
       // Fetch updated case with associations
       const updatedCase = await Case.findByPk(req.caseItem.id, {
         include: [
-          { model: Timeline },
-          { model: Note }
+          { model: Timeline, as: 'activities' },
+          { model: Note, as: 'notes' }
         ]
       });
 
@@ -393,14 +450,14 @@ router.post('/:id/assign',
       // Fetch updated case with associations
       const updatedCase = await Case.findByPk(req.caseItem.id, {
         include: [
-          { model: Timeline },
-          { model: Note },
+          { model: Timeline, as: 'activities' },
+          { model: Note, as: 'notes' },
           {
             model: Solicitor,
             as: 'assignedSolicitor',
             include: [{
               model: User,
-              as: 'User',
+              as: 'User', // Changed from 'SolicitorUser' to 'User'
               attributes: ['id', 'firstName', 'lastName', 'email', 'phone']
             }]
           }
@@ -468,14 +525,14 @@ router.post('/:id/accept',
       // Fetch updated case with associations
       const updatedCase = await Case.findByPk(id, {
         include: [
-          { model: Timeline },
-          { model: Note },
+          { model: Timeline, as: 'activities' },
+          { model: Note, as: 'notes' },
           {
             model: Solicitor,
             as: 'assignedSolicitor',
             include: [{
               model: User,
-              as: 'User',
+              as: 'User', // Changed from 'SolicitorUser' to 'User'
               attributes: ['id', 'firstName', 'lastName', 'email', 'phone']
             }]
           }
@@ -507,7 +564,7 @@ router.post('/:id/notes',
       await Note.create({
         caseId: req.caseItem.id,
         content,
-        createdById: req.user.id,
+        authorId: req.user.id,  // Changed from createdById to authorId
         isPrivate: isInternal
       });
 

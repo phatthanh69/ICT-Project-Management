@@ -66,7 +66,7 @@ router.get('/cases', authenticateToken, isAdmin, async (req, res) => {
           as: 'assignedSolicitor',
           include: [{
             model: User,
-            as: 'User',
+            as: 'SolicitorUser', // Changed from 'User' to 'SolicitorUser'
             attributes: ['id', 'firstName', 'lastName', 'email']
           }]
         },
@@ -75,7 +75,7 @@ router.get('/cases', authenticateToken, isAdmin, async (req, res) => {
           as: 'client',
           include: [{
             model: User,
-            as: 'User',
+            as: 'ClientUser', // Changed from 'User' to 'ClientUser'
             attributes: ['id', 'firstName', 'lastName', 'email']
           }]
         }
@@ -128,7 +128,7 @@ router.get('/cases/:id', authenticateToken, isAdmin, async (req, res) => {
           as: 'assignedSolicitor',
           include: [{
             model: User,
-            as: 'User',
+            as: 'SolicitorUser', // Changed from 'User' to 'SolicitorUser'
             attributes: ['id', 'firstName', 'lastName', 'email', 'phoneNumber']
           }]
         },
@@ -137,7 +137,7 @@ router.get('/cases/:id', authenticateToken, isAdmin, async (req, res) => {
           as: 'client',
           include: [{
             model: User,
-            as: 'User',
+            as: 'ClientUser', // Changed from 'User' to 'ClientUser'
             attributes: ['id', 'firstName', 'lastName', 'email', 'phoneNumber']
           }]
         },
@@ -296,7 +296,7 @@ router.get('/reports', authenticateToken, isAdmin, async (req, res) => {
     const solicitors = await Solicitor.findAll({
       include: [{
         model: User,
-        as: 'User',
+        as: 'SolicitorUser', // Changed from 'User' to 'SolicitorUser'
         attributes: ['firstName', 'lastName']
       }]
     });
@@ -334,7 +334,7 @@ router.get('/reports', authenticateToken, isAdmin, async (req, res) => {
 
       solicitorPerformance.push({
         id: solicitor.id,
-        name: `${solicitor.User.firstName} ${solicitor.User.lastName}`,
+        name: `${solicitor.SolicitorUser.firstName} ${solicitor.SolicitorUser.lastName}`, // Updated to use SolicitorUser
         activeCases,
         closedCases: closedCasesForSolicitor.length,
         avgResolutionTime: avgResolutionTimeForSolicitor
