@@ -129,14 +129,22 @@ router.get('/cases', authenticateToken, isAdmin, async (req, res) => {
       where: whereClause,
       include: [
         {
-          model: User,
+          model: Solicitor,
           as: 'assignedSolicitor',
-          attributes: ['firstName', 'lastName', 'email', 'specializations']
+          include: [{
+            model: User,
+            as: 'User',
+            attributes: ['firstName', 'lastName', 'email']
+          }]
         },
         {
-          model: User,
+          model: Client,
           as: 'client',
-          attributes: ['firstName', 'lastName', 'email']
+          include: [{
+            model: User,
+            as: 'User',
+            attributes: ['firstName', 'lastName', 'email']
+          }]
         }
       ],
       order: [['createdAt', 'DESC']],
@@ -214,14 +222,22 @@ router.get('/urgent-cases', authenticateToken, isAdmin, async (req, res) => {
       },
       include: [
         {
-          model: User,
+          model: Client,
           as: 'client',
-          attributes: ['firstName', 'lastName', 'email']
+          include: [{
+            model: User,
+            as: 'User',
+            attributes: ['firstName', 'lastName', 'email']
+          }]
         },
         {
-          model: User,
+          model: Solicitor,
           as: 'assignedSolicitor',
-          attributes: ['firstName', 'lastName', 'email']
+          include: [{
+            model: User,
+            as: 'User',
+            attributes: ['firstName', 'lastName', 'email']
+          }]
         }
       ],
       order: [['expectedResponseBy', 'ASC']]

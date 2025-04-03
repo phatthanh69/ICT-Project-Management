@@ -4,7 +4,7 @@ const multer = require('multer');
 const { body, validationResult } = require('express-validator');
 const { authenticateToken } = require('./auth');
 const { Op } = require('sequelize');
-const { Case, User, Solicitor, Client, Timeline, Note } = require('../models');
+const { Case, User, Solicitor, Client, CaseActivity: Timeline, CaseNote: Note } = require('../models');
 
 // Configure multer for file upload
 const upload = multer();
@@ -164,11 +164,26 @@ router.get('/', authenticateToken, async (req, res) => {
     const { type, status, priority, search, client, assigned } = req.query;
     const userRole = req.user.role;
     const userId = req.user.id;
-
     let where = {};
     let include = [
-      { model: User, as: 'client', attributes: ['id', 'firstName', 'lastName', 'email'] },
-      { model: User, as: 'assignedSolicitor', attributes: ['id', 'firstName', 'lastName', 'email'] }
+      {
+        model: Client,
+        as: 'client',
+        include: [{
+          model: User,
+          as: 'User',
+          attributes: ['id', 'firstName', 'lastName', 'email']
+        }]
+      },
+      {
+        model: Solicitor,
+        as: 'assignedSolicitor',
+        include: [{
+          model: User,
+          as: 'User',
+          attributes: ['id', 'firstName', 'lastName', 'email']
+        }]
+      }
     ];
 
     // Build query based on filters
@@ -249,27 +264,39 @@ router.get('/:id', authenticateToken, checkCaseAccess, async (req, res) => {
   try {
     const caseItem = await Case.findByPk(req.caseItem.id, {
       include: [
-        { 
-          model: User, 
-          as: 'client', 
-          attributes: ['id', 'firstName', 'lastName', 'email', 'phone'] 
+        {
+          model: Client,
+          as: 'client',
+          include: [{
+            model: User,
+            as: 'User',
+            attributes: ['id', 'firstName', 'lastName', 'email', 'phone']
+          }]
         },
-        { 
-          model: User, 
+        {
+          model: Solicitor,
           as: 'assignedSolicitor',
-          attributes: ['id', 'firstName', 'lastName', 'email', 'phone']
+          include: [{
+            model: User,
+            as: 'User',
+            attributes: ['id', 'firstName', 'lastName', 'email', 'phone']
+          }]
         },
         {
           model: Timeline,
-          include: [
-            { model: User, as: 'actor', attributes: ['id', 'firstName', 'lastName', 'role'] }
-          ]
+          include: [{
+            model: User,
+            as: 'User',
+            attributes: ['id', 'firstName', 'lastName', 'role']
+          }]
         },
         {
           model: Note,
-          include: [
-            { model: User, as: 'createdBy', attributes: ['id', 'firstName', 'lastName', 'role'] }
-          ]
+          include: [{
+            model: User,
+            as: 'User',
+            attributes: ['id', 'firstName', 'lastName', 'role']
+          }]
         }
       ]
     });
@@ -368,10 +395,14 @@ router.post('/:id/assign',
         include: [
           { model: Timeline },
           { model: Note },
-          { 
-            model: User, 
+          {
+            model: Solicitor,
             as: 'assignedSolicitor',
-            attributes: ['id', 'firstName', 'lastName', 'email', 'phone'] 
+            include: [{
+              model: User,
+              as: 'User',
+              attributes: ['id', 'firstName', 'lastName', 'email', 'phone']
+            }]
           }
         ]
       });
@@ -439,10 +470,14 @@ router.post('/:id/accept',
         include: [
           { model: Timeline },
           { model: Note },
-          { 
-            model: User, 
+          {
+            model: Solicitor,
             as: 'assignedSolicitor',
-            attributes: ['id', 'firstName', 'lastName', 'email', 'phone'] 
+            include: [{
+              model: User,
+              as: 'User',
+              attributes: ['id', 'firstName', 'lastName', 'email', 'phone']
+            }]
           }
         ]
       });

@@ -115,9 +115,9 @@ router.post('/login', loginValidation, async (req, res) => {
     const user = await User.scope('withPassword').findOne({
       where: { email: email.toLowerCase() },
       include: [
-        { model: Admin, required: false },
-        { model: Client, required: false },
-        { model: Solicitor, required: false }
+        { model: Admin, as: 'adminProfile', required: false },
+        { model: Client, as: 'clientProfile', required: false },
+        { model: Solicitor, as: 'solicitorProfile', required: false }
       ]
     });
     

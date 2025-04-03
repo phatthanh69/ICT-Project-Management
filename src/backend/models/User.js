@@ -14,6 +14,19 @@ class User extends Model {
       expiresIn: process.env.JWT_EXPIRY
     });
   }
+  
+  // Helper to check user type
+  isAdmin() {
+    return this.role === 'admin';
+  }
+  
+  isSolicitor() {
+    return this.role === 'solicitor';
+  }
+  
+  isClient() {
+    return this.role === 'client';
+  }
 }
 
 User.init({

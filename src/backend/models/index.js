@@ -28,33 +28,121 @@ const Rating = require('./Rating');
 async function initializeDatabase() {
   try {
     // Set up associations
-    // User associations
-    Admin.belongsTo(User, { foreignKey: 'id', onDelete: 'CASCADE' });
-    User.hasOne(Admin, { foreignKey: 'id' });
+    // User inheritance associations - one-to-one with proper cascade
+    User.hasOne(Admin, { 
+      foreignKey: 'id', 
+      as: 'adminProfile', 
+      onDelete: 'CASCADE'
+    });
+    Admin.belongsTo(User, { 
+      foreignKey: 'id',
+      onDelete: 'CASCADE' 
+    });
 
-    Client.belongsTo(User, { foreignKey: 'id', onDelete: 'CASCADE' });
-    User.hasOne(Client, { foreignKey: 'id' });
+    User.hasOne(Client, { 
+      foreignKey: 'id', 
+      as: 'clientProfile',
+      onDelete: 'CASCADE' 
+    });
+    Client.belongsTo(User, { 
+      foreignKey: 'id',
+      onDelete: 'CASCADE' 
+    });
 
-    Solicitor.belongsTo(User, { foreignKey: 'id', onDelete: 'CASCADE' });
-    User.hasOne(Solicitor, { foreignKey: 'id' });
+    User.hasOne(Solicitor, { 
+      foreignKey: 'id', 
+      as: 'solicitorProfile',
+      onDelete: 'CASCADE' 
+    });
+    Solicitor.belongsTo(User, { 
+      foreignKey: 'id',
+      onDelete: 'CASCADE' 
+    });
 
     // Case associations
-    Case.belongsTo(Client, { foreignKey: 'clientId', as: 'client' });
-    Case.belongsTo(Solicitor, { foreignKey: 'assignedSolicitorId', as: 'assignedSolicitor' });
-    Case.hasMany(CaseActivity, { foreignKey: 'caseId', as: 'activities' });
-    Case.hasMany(CaseNote, { foreignKey: 'caseId', as: 'notes' });
-    Case.hasMany(CaseDeadline, { foreignKey: 'caseId', as: 'deadlines' });
+    Client.hasMany(Case, { 
+      foreignKey: 'clientId', 
+      as: 'cases' 
+    });
+    Case.belongsTo(Client, { 
+      foreignKey: 'clientId', 
+      as: 'client' 
+    });
 
-    // Client associations
-    Client.hasMany(Case, { foreignKey: 'clientId', as: 'cases' });
+    Solicitor.hasMany(Case, { 
+      foreignKey: 'assignedSolicitorId', 
+      as: 'currentCases' 
+    });
+    Case.belongsTo(Solicitor, { 
+      foreignKey: 'assignedSolicitorId', 
+      as: 'assignedSolicitor' 
+    });
+    
+    Case.hasMany(CaseActivity, { 
+      foreignKey: 'caseId', 
+      as: 'activities',
+      onDelete: 'CASCADE' 
+    });
+    CaseActivity.belongsTo(Case, { 
+      foreignKey: 'caseId'
+    });
+    
+    Case.hasMany(CaseNote, { 
+      foreignKey: 'caseId', 
+      as: 'notes',
+      onDelete: 'CASCADE' 
+    });
+    CaseNote.belongsTo(Case, { 
+      foreignKey: 'caseId'
+    });
+    
+    Case.hasMany(CaseDeadline, { 
+      foreignKey: 'caseId', 
+      as: 'deadlines',
+      onDelete: 'CASCADE' 
+    });
+    CaseDeadline.belongsTo(Case, { 
+      foreignKey: 'caseId'
+    });
 
-    // Solicitor associations
-    Solicitor.hasMany(Case, { foreignKey: 'assignedSolicitorId', as: 'currentCases' });
-    Solicitor.hasMany(Rating, { foreignKey: 'solicitorId', as: 'ratings' });
+    // Activity and Note User associations
+    User.hasMany(CaseActivity, { 
+      foreignKey: 'performedBy', 
+      as: 'activities' 
+    });
+    CaseActivity.belongsTo(User, { 
+      foreignKey: 'performedBy', 
+      as: 'actor' 
+    });
+    
+    User.hasMany(CaseNote, { 
+      foreignKey: 'createdBy', 
+      as: 'notes' 
+    });
+    CaseNote.belongsTo(User, { 
+      foreignKey: 'createdBy', 
+      as: 'author' 
+    });
 
     // Rating associations
-    Rating.belongsTo(Solicitor, { foreignKey: 'solicitorId', as: 'solicitor' });
-    Rating.belongsTo(User, { foreignKey: 'fromUserId', as: 'rater' });
+    Solicitor.hasMany(Rating, { 
+      foreignKey: 'solicitorId', 
+      as: 'ratings',
+      onDelete: 'CASCADE' 
+    });
+    Rating.belongsTo(Solicitor, { 
+      foreignKey: 'solicitorId', 
+      as: 'solicitor' 
+    });
+    
+    User.hasMany(Rating, { 
+      foreignKey: 'fromUserId', 
+      as: 'givenRatings' 
+    });
+    Rating.belongsTo(User, { 
+      foreignKey: 'fromUserId', 
+      as: 'rater' 
+    });
 
     // Sync all models with database
     await sequelize.sync({ alter: process.env.NODE_ENV === 'development' });

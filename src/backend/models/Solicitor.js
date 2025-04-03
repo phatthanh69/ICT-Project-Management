@@ -1,10 +1,16 @@
-const { DataTypes } = require('sequelize');
-const User = require('./User');
+const { Model, DataTypes } = require('sequelize');
 const { sequelize } = require('../config/database');
 
-class Solicitor extends User {
+class Solicitor extends Model {
   async canTakeNewCase() {
-    const currentCaseCount = await this.countCurrentCases();
+    const currentCaseCount = await sequelize.models.Case.count({
+      where: { 
+        assignedSolicitorId: this.id,
+        status: {
+          [sequelize.Sequelize.Op.notIn]: ['CLOSED']
+        }
+      }
+    });
     return currentCaseCount < (this.maxCases || 10) && this.verified;
   }
 
@@ -27,7 +33,8 @@ Solicitor.init({
     references: {
       model: 'users',
       key: 'id'
-    }
+    },
+    onDelete: 'CASCADE'
   },
   solicitorNumber: {
     type: DataTypes.STRING,

@@ -1,21 +1,17 @@
-const { DataTypes } = require('sequelize');
-const User = require('./User');
+const { DataTypes, Model } = require('sequelize');
 const { sequelize } = require('../config/database');
 
-class Admin extends User {
-  static isAdmin(user) {
-    return user instanceof Admin;
-  }
-}
+class Admin extends Model {}
 
 Admin.init({
   id: {
     type: DataTypes.UUID,
     primaryKey: true,
     references: {
-      model: User,
+      model: 'users',
       key: 'id'
-    }
+    },
+    onDelete: 'CASCADE'
   },
   permissions: {
     type: DataTypes.ARRAY(DataTypes.STRING),
@@ -39,13 +35,6 @@ Admin.init({
   sequelize,
   modelName: 'Admin',
   tableName: 'admins'
-});
-
-// Setup associations
-Admin.belongsTo(User, { 
-  foreignKey: 'id',
-  constraints: true,
-  onDelete: 'CASCADE' 
 });
 
 module.exports = Admin;

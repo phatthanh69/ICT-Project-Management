@@ -1,8 +1,7 @@
-const { DataTypes } = require('sequelize');
-const User = require('./User');
+const { Model, DataTypes } = require('sequelize');
 const { sequelize } = require('../config/database');
 
-class Client extends User {}
+class Client extends Model {}
 
 Client.init({
   id: {
@@ -11,7 +10,8 @@ Client.init({
     references: {
       model: 'users',
       key: 'id'
-    }
+    },
+    onDelete: 'CASCADE'
   },
   street: {
     type: DataTypes.STRING
