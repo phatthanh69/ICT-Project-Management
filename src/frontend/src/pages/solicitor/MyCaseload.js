@@ -15,7 +15,7 @@ import {
   Tab,
 } from '@mui/material';
 import { format } from 'date-fns';
-import axios from 'axios';
+import axiosInstance from '../../utils/axios';
 
 const TabPanel = (props) => {
   const { children, value, index, ...other } = props;
@@ -47,8 +47,10 @@ const MyCaseload = () => {
 
   const fetchMyCases = async () => {
     try {
-      const response = await axios.get('/api/cases/my-caseload');
-      setCases(response.data);
+      const response = await axiosInstance.get('/cases', {
+        params: { assigned: true }
+      });
+      setCases(response.data.cases || response.data);
       setLoading(false);
     } catch (err) {
       setError('Failed to fetch cases. Please try again later.');

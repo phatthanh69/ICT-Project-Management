@@ -13,8 +13,6 @@ import { Add as AddIcon } from '@mui/icons-material';
 import axiosInstance from '../../utils/axios';
 import CaseCard from '../../components/cases/CaseCard';
 
-// You may need to update this based on your actual backend URL
-const API_BASE_URL = process.env.REACT_APP_API_URL || '';
 
 const MyCases = () => {
   const [cases, setCases] = useState([]);
@@ -25,8 +23,6 @@ const MyCases = () => {
   useEffect(() => {
     const fetchCases = async () => {
       try {
-        // Using the correct endpoint that exists in the backend
-        console.log('Fetching cases from:', `${API_BASE_URL}/cases`);
         const response = await axiosInstance.get('/cases');
         
         // The backend returns a data structure with cases inside
@@ -35,7 +31,7 @@ const MyCases = () => {
         setLoading(false);
       } catch (err) {
         console.error('Error fetching cases:', err);
-        setError(`Failed to fetch cases: ${err.message}. Please ensure the backend server is running at port 5555.`);
+        setError(`Failed to fetch cases: ${err.message}. Please ensure the backend server is running.`);
         setLoading(false);
       }
     };

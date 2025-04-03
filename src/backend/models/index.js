@@ -4,6 +4,18 @@ const config = require('../config/database');
 // Initialize Sequelize with database configuration
 const sequelize = config.sequelize;
 
+// Test database connection function
+async function testConnection() {
+  try {
+    await sequelize.authenticate();
+    console.log('Database connection established successfully.');
+    return true;
+  } catch (error) {
+    console.error('Unable to connect to the database:', error);
+    throw error;
+  }
+}
+
 // Import models
 const User = require('./User');
 const Admin = require('./Admin');
@@ -18,8 +30,13 @@ async function initializeDatabase() {
     // Set up associations
     // User associations
     Admin.belongsTo(User, { foreignKey: 'id', onDelete: 'CASCADE' });
+    User.hasOne(Admin, { foreignKey: 'id' });
+
     Client.belongsTo(User, { foreignKey: 'id', onDelete: 'CASCADE' });
+    User.hasOne(Client, { foreignKey: 'id' });
+
     Solicitor.belongsTo(User, { foreignKey: 'id', onDelete: 'CASCADE' });
+    User.hasOne(Solicitor, { foreignKey: 'id' });
 
     // Case associations
     Case.belongsTo(Client, { foreignKey: 'clientId', as: 'client' });
@@ -42,14 +59,16 @@ async function initializeDatabase() {
     // Sync all models with database
     await sequelize.sync({ alter: process.env.NODE_ENV === 'development' });
     console.log('Database models synchronized successfully.');
-
-    // Test database connection
-    await sequelize.authenticate();
-    console.log('Database connection established successfully.');
+    
+    // Seed database with initial data if in development mode
+    if (process.env.NODE_ENV === 'development') {
+      const runSeeders = require('../seeders');
+      await runSeeders();
+    }
 
   } catch (error) {
     console.error('Error initializing database:', error);
-    process.exit(1);
+    throw error;
   }
 }
 
@@ -57,6 +76,7 @@ async function initializeDatabase() {
 module.exports = {
   sequelize,
   Sequelize,
+  testConnection,
   initializeDatabase,
   User,
   Admin,

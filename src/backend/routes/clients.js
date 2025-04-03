@@ -1,8 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const { authenticateToken } = require('./auth');
-const Case = require('../models/Case');
-const Client = require('../models/Client');
+const { Case, Client, User } = require('../models');
+const { Op, Sequelize } = require('sequelize');
 
 // Get client dashboard stats
 router.get('/dashboard', authenticateToken, async (req, res) => {
@@ -11,7 +11,7 @@ router.get('/dashboard', authenticateToken, async (req, res) => {
       return res.status(403).json({ message: 'Access denied' });
     }
 
-    const userId = req.user.userId;
+    const userId = req.user.id;
 
     const [
       totalCases,
@@ -20,14 +20,31 @@ router.get('/dashboard', authenticateToken, async (req, res) => {
       urgentCases,
       recentActivity
     ] = await Promise.all([
-      Case.countDocuments({ client: userId }),
-      Case.countDocuments({ client: userId, status: { $nin: ['resolved', 'closed'] } }),
-      Case.countDocuments({ client: userId, status: 'resolved' }),
-      Case.countDocuments({ client: userId, priority: 'urgent', status: { $nin: ['resolved', 'closed'] } }),
-      Case.find({ client: userId })
-        .sort({ 'timeline.createdAt': -1 })
-        .limit(5)
-        .populate('assignedSolicitor', 'firstName lastName')
+      Case.count({ where: { clientId: userId } }),
+      Case.count({ 
+        where: {
+          clientId: userId,
+          status: { [Op.notIn]: ['RESOLVED', 'CLOSED'] }
+        }
+      }),
+      Case.count({ where: { clientId: userId, status: 'RESOLVED' } }),
+      Case.count({ 
+        where: { 
+          clientId: userId,
+          priority: 'URGENT',
+          status: { [Op.notIn]: ['RESOLVED', 'CLOSED'] }
+        }
+      }),
+      Case.findAll({ 
+        where: { clientId: userId },
+        order: [['timeline', 'createdAt', 'DESC']],
+        limit: 5,
+        include: [{
+          model: User,
+          as: 'assignedSolicitor',
+          attributes: ['firstName', 'lastName']
+        }]
+      })
     ]);
 
     res.json({
@@ -51,36 +68,39 @@ router.get('/communications', authenticateToken, async (req, res) => {
       return res.status(403).json({ message: 'Access denied' });
     }
 
-    const communications = await Case.aggregate([
-      { $match: { client: req.user.userId } },
-      { $unwind: '$notes' },
-      { $match: { 'notes.isInternal': false } },
-      {
-        $lookup: {
-          from: 'users',
-          localField: 'notes.author',
-          foreignField: '_id',
-          as: 'author'
-        }
-      },
-      { $unwind: '$author' },
-      {
-        $project: {
-          caseId: '$_id',
-          caseType: '$type',
-          noteId: '$notes._id',
-          content: '$notes.content',
-          createdAt: '$notes.createdAt',
-          author: {
-            name: { $concat: ['$author.firstName', ' ', '$author.lastName'] },
-            role: '$author.role'
-          }
-        }
-      },
-      { $sort: { createdAt: -1 } }
-    ]);
+    const communications = await Case.findAll({
+      where: { client: req.user.userId },
+      include: [{
+        model: 'Note',
+        where: { isInternal: false },
+        include: [{
+          model: User,
+          as: 'author',
+          attributes: ['firstName', 'lastName', 'role']
+        }]
+      }],
+      order: [[Sequelize.literal('"Notes"."createdAt"'), 'DESC']]
+    });
 
-    res.json(communications);
+    // Transform the data to match the expected format
+    const formattedCommunications = [];
+    communications.forEach(caseItem => {
+      caseItem.Notes.forEach(note => {
+        formattedCommunications.push({
+          caseId: caseItem.id,
+          caseType: caseItem.type,
+          noteId: note.id,
+          content: note.content,
+          createdAt: note.createdAt,
+          author: {
+            name: `${note.author.firstName} ${note.author.lastName}`,
+            role: note.author.role
+          }
+        });
+      });
+    });
+
+    res.json(formattedCommunications);
   } catch (error) {
     res.status(500).json({ message: 'Error fetching communication history' });
   }
@@ -93,9 +113,17 @@ router.get('/profile', authenticateToken, async (req, res) => {
       return res.status(403).json({ message: 'Access denied' });
     }
 
-    const client = await Client.findById(req.user.userId)
-      .select('-password')
-      .populate('cases', 'type status priority');
+    const client = await Client.findByPk(
+      req.user.userId,
+      {
+        attributes: { exclude: ['password'] },
+        include: [{
+          model: Case,
+          as: 'cases',
+          attributes: ['type', 'status', 'priority']
+        }]
+      }
+    );
 
     if (!client) {
       return res.status(404).json({ message: 'Client not found' });

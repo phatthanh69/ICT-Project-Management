@@ -25,8 +25,13 @@ const AvailableCases = () => {
 
   const fetchAvailableCases = async () => {
     try {
-      const response = await axiosInstance.get('/cases');
-      setCases(response.data);
+      const response = await axiosInstance.get('/cases', {
+        params: { 
+          status: 'OPEN',
+          assigned: false 
+        }
+      });
+      setCases(response.data.cases || response.data);
       setLoading(false);
     } catch (err) {
       setError('Failed to fetch available cases. Please try again later.');
@@ -36,7 +41,9 @@ const AvailableCases = () => {
 
   const handleAcceptCase = async (caseId) => {
     try {
-      await axios.post(`/api/cases/${caseId}/accept`);
+      await axiosInstance.post(`/api/cases/${caseId}/assign`, {
+        solicitorId: localStorage.getItem('userId') // Assume we store user ID in localStorage
+      });
       // Remove the accepted case from the list
       setCases(cases.filter(c => c._id !== caseId));
     } catch (err) {

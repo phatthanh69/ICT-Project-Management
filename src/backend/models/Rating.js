@@ -25,7 +25,7 @@ Rating.init({
       key: 'id'
     }
   },
-  score: {
+  rating: {
     type: DataTypes.INTEGER,
     allowNull: false,
     validate: {
@@ -41,20 +41,12 @@ Rating.init({
   modelName: 'Rating',
   tableName: 'ratings',
   timestamps: true,
-  hooks: {
-    afterCreate: async (rating) => {
-      // Update solicitor's average rating
-      const ratings = await Rating.findAll({
-        where: { solicitorId: rating.solicitorId },
-        attributes: [[sequelize.fn('AVG', sequelize.col('score')), 'averageScore']]
-      });
-      
-      await sequelize.models.Solicitor.update(
-        { averageRating: ratings[0].dataValues.averageScore },
-        { where: { id: rating.solicitorId } }
-      );
+  indexes: [
+    {
+      unique: true,
+      fields: ['solicitorId', 'fromUserId']
     }
-  }
+  ]
 });
 
 module.exports = Rating;

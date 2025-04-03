@@ -1,5 +1,5 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
-import axios from 'axios';
+import axiosInstance from '../../utils/axios';
 
 const API_URL = process.env.REACT_APP_API_URL || '/api';
 
@@ -14,7 +14,7 @@ export const fetchCases = createAsyncThunk(
         limit,
         ...otherFilters
       }).toString();
-      const response = await axios.get(`${API_URL}/cases?${queryParams}`);
+      const response = await axiosInstance.get(`${API_URL}/cases?${queryParams}`);
       return response.data;
     } catch (error) {
       console.error('Error fetching cases:', error);
@@ -30,7 +30,7 @@ export const fetchCaseById = createAsyncThunk(
   'cases/fetchCaseById',
   async (caseId, { rejectWithValue }) => {
     try {
-      const response = await axios.get(`${API_URL}/cases/${caseId}`);
+      const response = await axiosInstance.get(`${API_URL}/cases/${caseId}`);
       return response.data;
     } catch (error) {
       return rejectWithValue(error.response?.data?.message || 'Failed to fetch case');
@@ -42,7 +42,7 @@ export const createCase = createAsyncThunk(
   'cases/createCase',
   async (caseData, { rejectWithValue }) => {
     try {
-      const response = await axios.post(`${API_URL}/cases`, caseData);
+      const response = await axiosInstance.post(`${API_URL}/cases`, caseData);
       return response.data;
     } catch (error) {
       return rejectWithValue(error.response?.data?.message || 'Failed to create case');
@@ -54,7 +54,7 @@ export const updateCase = createAsyncThunk(
   'cases/updateCase',
   async ({ caseId, updates }, { rejectWithValue }) => {
     try {
-      const response = await axios.patch(`${API_URL}/cases/${caseId}`, updates);
+      const response = await axiosInstance.patch(`${API_URL}/cases/${caseId}`, updates);
       return response.data;
     } catch (error) {
       return rejectWithValue(error.response?.data?.message || 'Failed to update case');
@@ -66,7 +66,7 @@ export const assignCase = createAsyncThunk(
   'cases/assignCase',
   async ({ caseId, solicitorId }, { rejectWithValue }) => {
     try {
-      const response = await axios.post(`${API_URL}/cases/${caseId}/assign`, {
+      const response = await axiosInstance.post(`${API_URL}/cases/${caseId}/assign`, {
         solicitorId
       });
       return response.data;
@@ -80,7 +80,7 @@ export const addCaseNote = createAsyncThunk(
   'cases/addNote',
   async ({ caseId, note }, { rejectWithValue }) => {
     try {
-      const response = await axios.post(`${API_URL}/cases/${caseId}/notes`, note);
+      const response = await axiosInstance.post(`${API_URL}/cases/${caseId}/notes`, note);
       return response.data;
     } catch (error) {
       return rejectWithValue(error.response?.data?.message || 'Failed to add note');

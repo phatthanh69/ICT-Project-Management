@@ -3,11 +3,8 @@ const router = express.Router();
 const multer = require('multer');
 const { body, validationResult } = require('express-validator');
 const { authenticateToken } = require('./auth');
-const mongoose = require('mongoose');
-const Case = require('../models/Case');
-const User = require('../models/User');
-const Solicitor = require('../models/Solicitor');
-const Client = require('../models/Client');
+const { Op } = require('sequelize');
+const { Case, User, Solicitor, Client, Timeline, Note } = require('../models');
 
 // Configure multer for file upload
 const upload = multer();
@@ -16,10 +13,16 @@ const upload = multer();
 const checkCaseAccess = async (req, res, next) => {
   try {
     const caseId = req.params.id;
-    const userId = req.user._id; // Changed from req.user.userId
+    const userId = req.user.id;
     const userRole = req.user.role;
 
-    const caseItem = await Case.findById(caseId);
+    const caseItem = await Case.findByPk(caseId, {
+      include: [
+        { model: Timeline },
+        { model: Note }
+      ]
+    });
+    
     if (!caseItem) {
       return res.status(404).json({ message: 'Case not found' });
     }
@@ -31,14 +34,14 @@ const checkCaseAccess = async (req, res, next) => {
     }
 
     // Client can only access their own cases
-    if (userRole === 'client' && caseItem.client.toString() !== userId) {
+    if (userRole === 'client' && caseItem.clientId !== userId) {
       return res.status(403).json({ message: 'Access denied' });
     }
 
     // Solicitor can access assigned cases or cases matching their specialization
     if (userRole === 'solicitor') {
-      const solicitor = await Solicitor.findById(userId);
-      if (caseItem.assignedSolicitor?.toString() !== userId &&
+      const solicitor = await Solicitor.findByPk(userId);
+      if (caseItem.assignedSolicitorId !== userId &&
           !solicitor.specializations.includes(caseItem.type)) {
         return res.status(403).json({ message: 'Access denied' });
       }
@@ -54,6 +57,14 @@ const checkCaseAccess = async (req, res, next) => {
 // Create new case
 router.post('/',
   authenticateToken,
+  // Move case access check after auth but before file upload
+  async (req, res, next) => {
+    // Check if user is a client or admin
+    if (req.user.role !== 'client' && req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Only clients or admins can create cases' });
+    }
+    next();
+  },
   upload.array('documents'),
   [
     body('type')
@@ -83,13 +94,9 @@ router.post('/',
         return res.status(400).json({ errors: errors.array() });
       }
 
-      // Validate user role is client or admin
-      if (req.user.role !== 'client' && req.user.role !== 'admin') {
-        return res.status(403).json({ message: 'Only clients or admins can create cases' });
-      }
 
       // Ensure userId is available
-      if (!req.user._id) {
+      if (!req.user.id) {
         console.error('No user ID available in request');
         return res.status(400).json({
           message: 'User identification error',
@@ -97,18 +104,21 @@ router.post('/',
         });
       }
 
-      // Create new case with validated data
-      const newCase = new Case({
+      // Create new case with validated data using Sequelize transaction
+      const newCase = await Case.create({
         type: req.body.type,
         description: req.body.description,
         priority: req.body.priority || 'MEDIUM',
-        client: req.user._id, // Must be present due to validation above
-        status: 'OPEN',
-        timeline: [{
-          action: 'Case created',
-          actor: req.user._id, // Changed from req.user.userId
-          notes: 'New case submitted'
-        }]
+        clientId: req.user.id,
+        status: 'OPEN'
+      });
+
+      // Create timeline entry
+      await Timeline.create({
+        caseId: newCase.id,
+        action: 'Case created',
+        actorId: req.user.id,
+        notes: 'New case submitted'
       });
 
       // Handle file uploads if any
@@ -118,21 +128,24 @@ router.post('/',
         // and add their references to the case
       }
 
-      await newCase.save();
-      console.log('Case created successfully:', newCase._id);
+      console.log('Case created successfully:', newCase.id);
 
-      res.status(201).json(newCase);
+      // Fetch the created case with associated timeline
+      const createdCase = await Case.findByPk(newCase.id, {
+        include: [{ model: Timeline }]
+      });
+
+      res.status(201).json(createdCase);
     } catch (error) {
       console.error('Error creating case:', error);
       
-      // Improved error handling for validation errors from Mongoose
-      if (error.name === 'ValidationError') {
-        const validationErrors = Object.values(error.errors).map(err => ({
+      // Improved error handling for validation errors from Sequelize
+      if (error.name === 'SequelizeValidationError') {
+        const validationErrors = error.errors.map(err => ({
           field: err.path,
           message: err.message
         }));
         
-        // Log more details for debugging
         console.error('Validation error details:', JSON.stringify(validationErrors));
         
         return res.status(400).json({ 
@@ -148,69 +161,73 @@ router.post('/',
 // Get cases with filters
 router.get('/', authenticateToken, async (req, res) => {
   try {
-    const { type, status, priority, search, client } = req.query;
+    const { type, status, priority, search, client, assigned } = req.query;
     const userRole = req.user.role;
-    const userId = req.user._id;
+    const userId = req.user.id;
 
-    let query = {};
+    let where = {};
+    let include = [
+      { model: User, as: 'client', attributes: ['id', 'firstName', 'lastName', 'email'] },
+      { model: User, as: 'assignedSolicitor', attributes: ['id', 'firstName', 'lastName', 'email'] }
+    ];
 
     // Build query based on filters
-    if (type) query.type = type;
-    if (status) query.status = status;
-    if (priority) query.priority = priority;
+    if (type) where.type = type;
+    if (status) where.status = status;
+    if (priority) where.priority = priority;
     if (search) {
-      query.$or = [
-        { caseNumber: { $regex: search, $options: 'i' } },
-        { description: { $regex: search, $options: 'i' } }
+      where[Op.or] = [
+        { caseNumber: { [Op.iLike]: `%${search}%` } },
+        { description: { [Op.iLike]: `%${search}%` } }
       ];
     }
 
     // Apply role-based filters and handle client parameter
     if (userRole === 'admin' && client) {
       // Admin can view cases for any client
-      query.client = client;
+      where.clientId = client;
     } else if (userRole === 'client') {
       // Clients can only view their own cases
-      query.client = userId;
+      where.clientId = userId;
     } else if (userRole === 'solicitor') {
-      // Fetch solicitor details for specialization check
-      const solicitor = await Solicitor.findById(userId);
-      if (!solicitor) {
-        console.error('Solicitor not found:', userId);
-        return res.status(404).json({ message: 'Solicitor not found' });
-      }
-
-      query.$or = [
-        { assignedSolicitor: userId },
-        {
-          type: { $in: solicitor.specializations },
-          status: 'OPEN'
+      // Handle solicitor-specific queries
+      if (assigned === 'true') {
+        // Only show cases assigned to this solicitor (my-caseload)
+        where.assignedSolicitorId = userId;
+      } else {
+        // Fetch solicitor details for specialization check
+        const solicitor = await Solicitor.findByPk(userId);
+        if (!solicitor) {
+          console.error('Solicitor not found:', userId);
+          return res.status(404).json({ message: 'Solicitor not found' });
         }
-      ];
+
+        where[Op.or] = [
+          { assignedSolicitorId: userId },
+          {
+            type: { [Op.in]: solicitor.specializations },
+            status: 'OPEN',
+            assignedSolicitorId: null
+          }
+        ];
+      }
     }
 
     // Calculate pagination data
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
-    const startIndex = (page - 1) * limit;
+    const offset = (page - 1) * limit;
 
-    // Validate client ObjectId if provided
-    if (query.client && !mongoose.Types.ObjectId.isValid(query.client)) {
-      console.error('Invalid client ID:', query.client);
-      return res.status(400).json({ message: 'Invalid client ID' });
-    }
+    // Get total count for pagination and fetch cases
+    const { count: totalCases, rows: paginatedCases } = await Case.findAndCountAll({
+      where,
+      include,
+      order: [['createdAt', 'DESC']],
+      offset,
+      limit
+    });
 
-    // Get total count for pagination
-    const totalCases = await Case.countDocuments(query);
     const totalPages = Math.ceil(totalCases / limit);
-
-    // Fetch paginated cases with populated fields
-    const paginatedCases = await Case.find(query)
-      .populate('client', 'firstName lastName email')
-      .populate('assignedSolicitor', 'firstName lastName email')
-      .sort({ createdAt: -1 })
-      .skip(startIndex)
-      .limit(limit);
 
     res.json({
       cases: paginatedCases,
@@ -230,11 +247,32 @@ router.get('/', authenticateToken, async (req, res) => {
 // Get specific case
 router.get('/:id', authenticateToken, checkCaseAccess, async (req, res) => {
   try {
-    const caseItem = await req.caseItem
-      .populate('client', 'firstName lastName email phone')
-      .populate('assignedSolicitor', 'firstName lastName email phone specializations')
-      .populate('timeline.actor', 'firstName lastName role')
-      .populate('notes.createdBy', 'firstName lastName role');
+    const caseItem = await Case.findByPk(req.caseItem.id, {
+      include: [
+        { 
+          model: User, 
+          as: 'client', 
+          attributes: ['id', 'firstName', 'lastName', 'email', 'phone'] 
+        },
+        { 
+          model: User, 
+          as: 'assignedSolicitor',
+          attributes: ['id', 'firstName', 'lastName', 'email', 'phone']
+        },
+        {
+          model: Timeline,
+          include: [
+            { model: User, as: 'actor', attributes: ['id', 'firstName', 'lastName', 'role'] }
+          ]
+        },
+        {
+          model: Note,
+          include: [
+            { model: User, as: 'createdBy', attributes: ['id', 'firstName', 'lastName', 'role'] }
+          ]
+        }
+      ]
+    });
 
     res.json(caseItem);
   } catch (error) {
@@ -248,7 +286,7 @@ router.patch('/:id',
   checkCaseAccess,
   async (req, res) => {
     try {
-      const allowedUpdates = ['status', 'priority', 'description', 'notes'];
+      const allowedUpdates = ['status', 'priority', 'description'];
       
       // Validate status if it's being updated
       if (req.body.status && !['OPEN', 'IN_PROGRESS', 'CLOSED', 'PENDING_REVIEW', 'AWAITING_CLIENT', 'ON_HOLD'].includes(req.body.status)) {
@@ -259,6 +297,7 @@ router.patch('/:id',
       if (req.body.priority && !['LOW', 'MEDIUM', 'HIGH', 'URGENT'].includes(req.body.priority)) {
         return res.status(400).json({ message: 'Invalid priority value' });
       }
+      
       const updates = Object.keys(req.body)
         .filter(key => allowedUpdates.includes(key))
         .reduce((obj, key) => {
@@ -267,16 +306,25 @@ router.patch('/:id',
         }, {});
 
       // Add timeline entry
-      req.caseItem.timeline.push({
+      await Timeline.create({
+        caseId: req.caseItem.id,
         action: 'Case updated',
-        actor: req.user._id, // Changed from req.user.userId
+        actorId: req.user.id,
         notes: `Updated: ${Object.keys(updates).join(', ')}`
       });
 
-      Object.assign(req.caseItem, updates);
-      await req.caseItem.save();
+      // Update case
+      await req.caseItem.update(updates);
+      
+      // Fetch updated case with associations
+      const updatedCase = await Case.findByPk(req.caseItem.id, {
+        include: [
+          { model: Timeline },
+          { model: Note }
+        ]
+      });
 
-      res.json(req.caseItem);
+      res.json(updatedCase);
     } catch (error) {
       res.status(500).json({ message: 'Error updating case' });
     }
@@ -291,31 +339,118 @@ router.post('/:id/assign',
       const { solicitorId } = req.body;
       
       // Check if solicitor exists and can take new cases
-      const solicitor = await Solicitor.findById(solicitorId);
-      if (!solicitor || !solicitor.canTakeNewCase()) {
+      const solicitor = await Solicitor.findByPk(solicitorId);
+      if (!solicitor || !await solicitor.canTakeNewCase()) {
         return res.status(400).json({ 
           message: 'Solicitor cannot take new cases at this time' 
         });
       }
 
       // Update case
-      req.caseItem.assignedSolicitor = solicitorId;
-      req.caseItem.status = 'IN_PROGRESS';
-      req.caseItem.timeline.push({
+      await req.caseItem.update({
+        assignedSolicitorId: solicitorId,
+        status: 'IN_PROGRESS'
+      });
+
+      // Add timeline entry
+      await Timeline.create({
+        caseId: req.caseItem.id,
         action: 'Case assigned to solicitor',
-        actor: req.user._id, // Changed from req.user.userId
+        actorId: req.user.id,
         notes: `Case assigned to ${solicitor.firstName} ${solicitor.lastName}`
       });
 
-      await req.caseItem.save();
-
       // Update solicitor's current cases
-      solicitor.availability.currentCases.push(req.caseItem._id);
-      await solicitor.save();
+      await solicitor.addCase(req.caseItem.id);
 
-      res.json(req.caseItem);
+      // Fetch updated case with associations
+      const updatedCase = await Case.findByPk(req.caseItem.id, {
+        include: [
+          { model: Timeline },
+          { model: Note },
+          { 
+            model: User, 
+            as: 'assignedSolicitor',
+            attributes: ['id', 'firstName', 'lastName', 'email', 'phone'] 
+          }
+        ]
+      });
+
+      res.json(updatedCase);
     } catch (error) {
       res.status(500).json({ message: 'Error assigning solicitor' });
+    }
+});
+
+// Accept a case (for solicitors)
+router.post('/:id/accept',
+  authenticateToken,
+  // Add access check for solicitor before case acceptance
+  async (req, res, next) => {
+    if (req.user.role !== 'solicitor') {
+      return res.status(403).json({ message: 'Only solicitors can accept cases' });
+    }
+    next();
+  },
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+      const userId = req.user.id;
+
+      // Find the case
+      const caseItem = await Case.findByPk(id);
+      if (!caseItem) {
+        return res.status(404).json({ message: 'Case not found' });
+      }
+
+      // Check if case is available (not assigned yet)
+      if (caseItem.assignedSolicitorId) {
+        return res.status(400).json({ message: 'Case is already assigned' });
+      }
+
+      // Check if the case matches solicitor's specialization
+      const solicitor = await Solicitor.findByPk(userId);
+      if (!solicitor) {
+        return res.status(404).json({ message: 'Solicitor profile not found' });
+      }
+
+      if (!solicitor.specializations.includes(caseItem.type)) {
+        return res.status(400).json({ 
+          message: 'Case type does not match solicitor specialization'
+        });
+      }
+
+      // Update case with solicitor assignment
+      await caseItem.update({
+        assignedSolicitorId: userId,
+        status: 'IN_PROGRESS'
+      });
+
+      // Add timeline entry
+      await Timeline.create({
+        caseId: id,
+        action: 'Case accepted',
+        actorId: userId,
+        notes: 'Solicitor accepted case'
+      });
+
+      // Fetch updated case with associations
+      const updatedCase = await Case.findByPk(id, {
+        include: [
+          { model: Timeline },
+          { model: Note },
+          { 
+            model: User, 
+            as: 'assignedSolicitor',
+            attributes: ['id', 'firstName', 'lastName', 'email', 'phone'] 
+          }
+        ]
+      });
+
+      res.json(updatedCase);
+    } catch (error) {
+      console.error('Error accepting case:', error);
+      res.status(500).json({ message: 'Error accepting case' });
     }
 });
 
@@ -333,21 +468,36 @@ router.post('/:id/notes',
 
       const { content, isInternal = false } = req.body;
 
-      req.caseItem.notes.push({
+      // Create new note
+      await Note.create({
+        caseId: req.caseItem.id,
         content,
-        createdBy: req.user._id, // Changed from req.user.userId
-        isPrivate: isInternal,
-        createdAt: new Date()
+        createdById: req.user.id,
+        isPrivate: isInternal
       });
 
-      req.caseItem.timeline.push({
+      // Add timeline entry
+      await Timeline.create({
+        caseId: req.caseItem.id,
         action: 'Note added',
-        actor: req.user._id, // Changed from req.user.userId
+        actorId: req.user.id,
         notes: isInternal ? 'Internal note added' : 'Note added'
       });
 
-      await req.caseItem.save();
-      res.json(req.caseItem);
+      // Fetch updated case with new note
+      const updatedCase = await Case.findByPk(req.caseItem.id, {
+        include: [
+          { model: Timeline },
+          { 
+            model: Note,
+            include: [
+              { model: User, as: 'createdBy', attributes: ['id', 'firstName', 'lastName', 'role'] }
+            ]
+          }
+        ]
+      });
+
+      res.json(updatedCase);
     } catch (error) {
       res.status(500).json({ message: 'Error adding note' });
     }

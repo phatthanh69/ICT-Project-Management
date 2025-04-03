@@ -32,7 +32,7 @@ app.use((req, res, next) => {
     console.log('Database initialized successfully');
   } catch (error) {
     console.error('Failed to initialize database:', error);
-    process.exit(1);
+    // Don't exit process, let the container restart handle failures
   }
 })();
 

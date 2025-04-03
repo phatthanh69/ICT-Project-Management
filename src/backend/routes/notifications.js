@@ -1,16 +1,18 @@
 const express = require('express');
 const router = express.Router();
 const { authenticateToken } = require('./auth');
-const User = require('../models/User');
+const { User, Notification } = require('../models');
+const { Op } = require('sequelize');
 
 // Get user notifications
 router.get('/', authenticateToken, async (req, res) => {
   try {
-    const user = await User.findById(req.user.userId)
-      .select('notifications')
-      .sort({ 'notifications.createdAt': -1 });
+    const notifications = await Notification.findAll({
+      where: { userId: req.user.userId },
+      order: [['createdAt', 'DESC']]
+    });
 
-    res.json(user.notifications || []);
+    res.json(notifications || []);
   } catch (error) {
     res.status(500).json({ message: 'Error fetching notifications' });
   }
@@ -19,25 +21,30 @@ router.get('/', authenticateToken, async (req, res) => {
 // Mark notification as read
 router.patch('/:notificationId/read', authenticateToken, async (req, res) => {
   try {
-    const user = await User.findOneAndUpdate(
+    const updated = await Notification.update(
       {
-        _id: req.user.userId,
-        'notifications._id': req.params.notificationId
+        read: true,
+        readAt: new Date()
       },
       {
-        $set: {
-          'notifications.$.read': true,
-          'notifications.$.readAt': new Date()
-        }
-      },
-      { new: true }
-    ).select('notifications');
+        where: {
+          id: req.params.notificationId,
+          userId: req.user.userId
+        },
+        returning: true
+      }
+    );
 
-    if (!user) {
+    if (updated[0] === 0) {
       return res.status(404).json({ message: 'Notification not found' });
     }
 
-    res.json(user.notifications);
+    const notifications = await Notification.findAll({
+      where: { userId: req.user.userId },
+      order: [['createdAt', 'DESC']]
+    });
+
+    res.json(notifications);
   } catch (error) {
     res.status(500).json({ message: 'Error updating notification' });
   }
@@ -46,17 +53,19 @@ router.patch('/:notificationId/read', authenticateToken, async (req, res) => {
 // Delete notification
 router.delete('/:notificationId', authenticateToken, async (req, res) => {
   try {
-    const user = await User.findByIdAndUpdate(
-      req.user.userId,
-      {
-        $pull: {
-          notifications: { _id: req.params.notificationId }
-        }
-      },
-      { new: true }
-    ).select('notifications');
+    await Notification.destroy({
+      where: {
+        id: req.params.notificationId,
+        userId: req.user.userId
+      }
+    });
 
-    res.json(user.notifications);
+    const notifications = await Notification.findAll({
+      where: { userId: req.user.userId },
+      order: [['createdAt', 'DESC']]
+    });
+
+    res.json(notifications);
   } catch (error) {
     res.status(500).json({ message: 'Error deleting notification' });
   }
@@ -65,18 +74,22 @@ router.delete('/:notificationId', authenticateToken, async (req, res) => {
 // Mark all notifications as read
 router.patch('/mark-all-read', authenticateToken, async (req, res) => {
   try {
-    const user = await User.findByIdAndUpdate(
-      req.user.userId,
+    await Notification.update(
       {
-        $set: {
-          'notifications.$[].read': true,
-          'notifications.$[].readAt': new Date()
-        }
+        read: true,
+        readAt: new Date()
       },
-      { new: true }
-    ).select('notifications');
+      {
+        where: { userId: req.user.userId }
+      }
+    );
 
-    res.json(user.notifications);
+    const notifications = await Notification.findAll({
+      where: { userId: req.user.userId },
+      order: [['createdAt', 'DESC']]
+    });
+
+    res.json(notifications);
   } catch (error) {
     res.status(500).json({ message: 'Error updating notifications' });
   }
@@ -85,18 +98,12 @@ router.patch('/mark-all-read', authenticateToken, async (req, res) => {
 // Helper function to create notification (used internally by other routes)
 const createNotification = async (userId, notification) => {
   try {
-    await User.findByIdAndUpdate(
+    await Notification.create({
+      ...notification,
       userId,
-      {
-        $push: {
-          notifications: {
-            ...notification,
-            createdAt: new Date(),
-            read: false
-          }
-        }
-      }
-    );
+      createdAt: new Date(),
+      read: false
+    });
     return true;
   } catch (error) {
     console.error('Error creating notification:', error);

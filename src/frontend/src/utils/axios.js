@@ -1,19 +1,19 @@
 import axios from 'axios';
 
-// Create axios instance with default config
-const instance = axios.create({
-  baseURL: process.env.REACT_APP_API_URL || '/api',
+// Create an instance for consistent API calling
+const axiosInstance = axios.create({
+  baseURL: process.env.REACT_APP_API_URL || '',
   headers: {
-    'Content-Type': 'application/json'
+    'Content-Type': 'application/json',
   }
 });
 
-// Add request interceptor to handle auth token
-instance.interceptors.request.use(
+// Add a request interceptor to include authentication token
+axiosInstance.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('token');
     if (token) {
-      config.headers['Authorization'] = `Bearer ${token}`;
+      config.headers.Authorization = `Bearer ${token}`;
     }
     return config;
   },
@@ -22,4 +22,20 @@ instance.interceptors.request.use(
   }
 );
 
-export default instance;
+// Add a response interceptor to handle common errors
+axiosInstance.interceptors.response.use(
+  (response) => {
+    return response;
+  },
+  (error) => {
+    // Handle 401 Unauthorized errors (token expired)
+    if (error.response && error.response.status === 401) {
+      // Redirect to login page or refresh token
+      localStorage.removeItem('token');
+      window.location.href = '/login';
+    }
+    return Promise.reject(error);
+  }
+);
+
+export default axiosInstance;

@@ -1,8 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const { authenticateToken } = require('./auth');
-const Case = require('../models/Case');
-const Solicitor = require('../models/Solicitor');
+const { Case, Solicitor, Client } = require('../models');
+const { Op } = require('sequelize');
 
 // Get solicitor dashboard stats
 router.get('/dashboard', authenticateToken, async (req, res) => {
@@ -11,7 +11,7 @@ router.get('/dashboard', authenticateToken, async (req, res) => {
       return res.status(403).json({ message: 'Access denied' });
     }
 
-    const userId = req.user.userId;
+    const userId = req.user.id;
     const now = new Date();
 
     const [
@@ -22,49 +22,63 @@ router.get('/dashboard', authenticateToken, async (req, res) => {
       recentActivity,
       performance
     ] = await Promise.all([
-      Case.countDocuments({ 
-        assignedSolicitor: userId,
-        status: { $nin: ['closed'] }
-      }),
-      Case.countDocuments({
-        assignedSolicitor: userId,
-        status: 'closed'
-      }),
-      Case.countDocuments({
-        assignedSolicitor: userId,
-        priority: 'urgent',
-        status: { $nin: ['closed'] }
-      }),
-      Case.find({
-        assignedSolicitor: userId,
-        status: { $nin: ['closed'] }
-      })
-        .select('type priority status expectedResponseBy')
-        .sort({ expectedResponseBy: 1 })
-        .limit(5),
-      Case.find({ assignedSolicitor: userId })
-        .sort({ 'timeline.createdAt': -1 })
-        .limit(5)
-        .populate('client', 'firstName lastName'),
-      Case.aggregate([
-        {
-          $match: {
-            assignedSolicitor: userId,
-            status: 'closed'
-          }
-        },
-        {
-          $group: {
-            _id: null,
-            avgResponseTime: {
-              $avg: { $subtract: ['$lastUpdated', '$createdAt'] }
-            },
-            totalCases: { $sum: 1 }
-          }
+      Case.count({ 
+        where: { 
+          assignedSolicitorId: userId,
+          status: { [Op.ne]: 'CLOSED' }
         }
-      ])
+      }),
+      Case.count({
+        where: {
+          assignedSolicitorId: userId,
+          status: 'CLOSED'
+        }
+      }),
+      Case.count({
+        where: {
+          assignedSolicitorId: userId,
+          priority: 'URGENT',
+          status: { [Op.ne]: 'CLOSED' }
+        }
+      }),
+      Case.findAll({
+        where: {
+          assignedSolicitorId: userId,
+          status: { [Op.ne]: 'CLOSED' }
+        },
+        attributes: ['type', 'priority', 'status', 'expectedResponseBy'],
+        order: [['expectedResponseBy', 'ASC']],
+        limit: 5
+      }),
+      Case.findAll({ 
+        where: { assignedSolicitorId: userId },
+        order: [['timeline', 'createdAt', 'DESC']],
+        limit: 5,
+        include: [{
+          model: Client,
+          as: 'client',
+          attributes: ['firstName', 'lastName']
+        }]
+      }),
+      Case.findAll({
+        where: {
+          assignedSolicitorId: userId,
+          status: 'CLOSED'
+        },
+        attributes: [
+          [
+            Case.sequelize.fn('AVG', 
+              Case.sequelize.fn('EXTRACT', Case.sequelize.literal('EPOCH FROM "lastUpdated" - "createdAt"'))),
+            'avgResponseTime'
+          ],
+          [Case.sequelize.fn('COUNT', Case.sequelize.col('id')), 'totalCases']
+        ],
+        raw: true
+      })
     ]);
 
+    const performanceData = performance[0] || { avgResponseTime: 0, totalCases: 0 };
+    
     res.json({
       caseload: {
         activeCases,
@@ -73,12 +87,9 @@ router.get('/dashboard', authenticateToken, async (req, res) => {
       },
       pendingCases,
       recentActivity,
-      performance: performance[0] ? {
-        averageResponseTime: Math.round(performance[0].avgResponseTime / (1000 * 60 * 60)), // Convert to hours
-        totalCasesHandled: performance[0].totalCases
-      } : {
-        averageResponseTime: 0,
-        totalCasesHandled: 0
+      performance: {
+        averageResponseTime: Math.round(performanceData.avgResponseTime / (60 * 60) || 0), // Convert to hours
+        totalCasesHandled: parseInt(performanceData.totalCases || 0)
       }
     });
   } catch (error) {
@@ -94,24 +105,28 @@ router.patch('/availability', authenticateToken, async (req, res) => {
     }
 
     const { maxCases, availableHours, vacation } = req.body;
-    const solicitor = await Solicitor.findById(req.user.userId);
+    const solicitor = await Solicitor.findByPk(req.user.id);
 
     if (!solicitor) {
       return res.status(404).json({ message: 'Solicitor not found' });
     }
 
+    // Get current availability or create default
+    let availability = solicitor.availability || {};
+
     if (maxCases !== undefined) {
-      solicitor.availability.maxCases = maxCases;
+      availability.maxCases = maxCases;
     }
 
     if (availableHours) {
-      solicitor.availability.availableHours = availableHours;
+      availability.availableHours = availableHours;
     }
 
     if (vacation) {
-      solicitor.availability.vacation = vacation;
+      availability.vacation = vacation;
     }
 
+    solicitor.availability = availability;
     await solicitor.save();
     res.json(solicitor.availability);
   } catch (error) {
@@ -126,19 +141,28 @@ router.get('/suggested-cases', authenticateToken, async (req, res) => {
       return res.status(403).json({ message: 'Access denied' });
     }
 
-    const solicitor = await Solicitor.findById(req.user.userId);
+    const solicitor = await Solicitor.findByPk(req.user.userId);
     if (!solicitor) {
       return res.status(404).json({ message: 'Solicitor not found' });
     }
 
-    const suggestedCases = await Case.find({
-      type: { $in: solicitor.specializations },
-      status: 'new',
-      assignedSolicitor: { $exists: false }
-    })
-    .populate('client', 'firstName lastName')
-    .sort({ priority: -1, createdAt: 1 })
-    .limit(10);
+    const suggestedCases = await Case.findAll({
+      where: {
+        type: { [Op.in]: solicitor.specializations },
+        status: 'NEW',
+        assignedSolicitorId: null
+      },
+      include: [{
+        model: Client,
+        as: 'client',
+        attributes: ['firstName', 'lastName']
+      }],
+      order: [
+        ['priority', 'DESC'],
+        ['createdAt', 'ASC']
+      ],
+      limit: 10
+    });
 
     res.json(suggestedCases);
   } catch (error) {
@@ -154,61 +178,69 @@ router.get('/performance', authenticateToken, async (req, res) => {
     }
 
     const { startDate, endDate } = req.query;
-    const query = { assignedSolicitor: req.user.userId };
+    const whereClause = { assignedSolicitorId: req.user.id };
 
     if (startDate && endDate) {
-      query.createdAt = {
-        $gte: new Date(startDate),
-        $lte: new Date(endDate)
+      whereClause.createdAt = {
+        [Op.gte]: new Date(startDate),
+        [Op.lte]: new Date(endDate)
       };
     }
 
-    const performance = await Case.aggregate([
-      { $match: query },
-      {
-        $group: {
-          _id: '$status',
-          count: { $sum: 1 },
-          avgResponseTime: {
-            $avg: {
-              $cond: [
-                { $eq: ['$status', 'closed'] },
-                { $subtract: ['$lastUpdated', '$createdAt'] },
-                null
-              ]
-            }
-          }
-        }
-      }
-    ]);
+    // Get performance by status
+    const performance = await Case.findAll({
+      where: whereClause,
+      attributes: [
+        'status',
+        [Case.sequelize.fn('COUNT', Case.sequelize.col('id')), 'count'],
+        [
+          Case.sequelize.fn('AVG', 
+            Case.sequelize.fn('CASE', 
+              Case.sequelize.literal('WHEN status = \'CLOSED\' THEN EXTRACT(EPOCH FROM "lastUpdated" - "createdAt") ELSE NULL END')
+            )
+          ),
+          'avgResponseTime'
+        ]
+      ],
+      group: ['status'],
+      raw: true
+    });
 
-    const casesByType = await Case.aggregate([
-      { $match: query },
-      {
-        $group: {
-          _id: '$type',
-          count: { $sum: 1 },
-          resolvedCount: {
-            $sum: { $cond: [{ $eq: ['$status', 'closed'] }, 1, 0] }
-          }
-        }
-      }
-    ]);
+    // Get cases by type
+    const casesByType = await Case.findAll({
+      where: whereClause,
+      attributes: [
+        'type',
+        [Case.sequelize.fn('COUNT', Case.sequelize.col('id')), 'count'],
+        [
+          Case.sequelize.fn('SUM', 
+            Case.sequelize.fn('CASE', 
+              Case.sequelize.literal('WHEN status = \'CLOSED\' THEN 1 ELSE 0 END')
+            )
+          ),
+          'resolvedCount'
+        ]
+      ],
+      group: ['type'],
+      raw: true
+    });
 
     res.json({
       overall: performance.reduce((acc, p) => {
-        acc[p._id] = {
-          count: p.count,
+        acc[p.status] = {
+          count: parseInt(p.count),
           avgResponseTime: p.avgResponseTime ? 
-            Math.round(p.avgResponseTime / (1000 * 60 * 60)) : null // Convert to hours
+            Math.round(p.avgResponseTime / (60 * 60)) : null // Convert to hours
         };
         return acc;
       }, {}),
       byType: casesByType.reduce((acc, c) => {
-        acc[c._id] = {
-          total: c.count,
-          resolved: c.resolvedCount,
-          resolutionRate: Math.round((c.resolvedCount / c.count) * 100)
+        const count = parseInt(c.count);
+        const resolvedCount = parseInt(c.resolvedCount);
+        acc[c.type] = {
+          total: count,
+          resolved: resolvedCount,
+          resolutionRate: Math.round((resolvedCount / count) * 100)
         };
         return acc;
       }, {})
@@ -236,13 +268,15 @@ router.patch('/specializations', authenticateToken, async (req, res) => {
       return res.status(400).json({ message: 'Invalid specializations' });
     }
 
-    const solicitor = await Solicitor.findByIdAndUpdate(
-      req.user.userId,
-      { $set: { specializations } },
-      { new: true }
+    const solicitor = await Solicitor.update(
+      { specializations },
+      { 
+        where: { id: req.user.id },
+        returning: true
+      }
     );
 
-    res.json(solicitor);
+    res.json(solicitor[1][0]); // Return the updated solicitor
   } catch (error) {
     res.status(500).json({ message: 'Error updating specializations' });
   }

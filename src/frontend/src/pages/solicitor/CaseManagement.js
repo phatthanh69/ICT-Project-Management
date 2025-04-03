@@ -20,7 +20,7 @@ import {
   DialogActions,
 } from '@mui/material';
 import { format } from 'date-fns';
-import axios from 'axios';
+import axiosInstance from '../../utils/axios';
 import CaseTimeline from '../../components/cases/CaseTimeline';
 
 const CaseManagement = () => {
@@ -37,7 +37,7 @@ const CaseManagement = () => {
 
   const fetchCaseDetails = async () => {
     try {
-      const response = await axios.get(`/api/cases/${id}`);
+      const response = await axiosInstance.get(`/api/cases/${id}`);
       setCaseData(response.data);
       setLoading(false);
     } catch (err) {
@@ -48,7 +48,7 @@ const CaseManagement = () => {
 
   const handleAddNote = async () => {
     try {
-      await axios.post(`/api/cases/${id}/notes`, { content: newNote });
+      await axiosInstance.post(`/api/cases/${id}/notes`, { content: newNote });
       setNoteDialogOpen(false);
       setNewNote('');
       fetchCaseDetails(); // Refresh case data
@@ -59,7 +59,7 @@ const CaseManagement = () => {
 
   const handleStatusUpdate = async (newStatus) => {
     try {
-      await axios.patch(`/api/cases/${id}/status`, { status: newStatus });
+      await axiosInstance.patch(`/api/cases/${id}/status`, { status: newStatus });
       fetchCaseDetails(); // Refresh case data
     } catch (err) {
       setError('Failed to update status. Please try again.');

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Box, Button, TextField, Typography, Container, Alert } from '@mui/material';
 import { useFormik } from 'formik';
 import * as yup from 'yup';
-import axios from 'axios';
+import axiosInstance from '../../utils/axios';
 
 const validationSchema = yup.object({
   email: yup
@@ -21,7 +21,7 @@ const ForgotPassword = () => {
     validationSchema: validationSchema,
     onSubmit: async (values) => {
       try {
-        await axios.post('/api/auth/forgot-password', values);
+        await axiosInstance.post('/auth/forgot-password', values);
         setStatus({
           type: 'success',
           message: 'Password reset instructions have been sent to your email',

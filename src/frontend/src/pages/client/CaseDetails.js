@@ -14,7 +14,7 @@ import {
   ListItemText,
 } from '@mui/material';
 import { format } from 'date-fns';
-import axios from 'axios';
+import axiosInstance from '../../utils/axios';
 import CaseTimeline from '../../components/cases/CaseTimeline';
 
 const CaseDetails = () => {
@@ -26,7 +26,7 @@ const CaseDetails = () => {
   useEffect(() => {
     const fetchCaseDetails = async () => {
       try {
-        const response = await axios.get(`/api/cases/${id}`);
+        const response = await axiosInstance.get(`/api/cases/${id}`);
         setCaseData(response.data);
         setLoading(false);
       } catch (err) {

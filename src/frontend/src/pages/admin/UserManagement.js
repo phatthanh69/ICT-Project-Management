@@ -90,9 +90,9 @@ const UserManagement = () => {
   const handleSubmit = async () => {
     try {
       if (editUser) {
-        await axios.put(`/api/admin/users/${editUser._id}`, formData);
+        await axiosInstance.put(`/api/admin/users/${editUser._id}`, formData);
       } else {
-        await axios.post('/api/admin/users', formData);
+        await axiosInstance.post('/admin/users', formData);
       }
       fetchUsers();
       handleCloseDialog();
@@ -104,7 +104,7 @@ const UserManagement = () => {
   const handleDeleteUser = async (userId) => {
     if (window.confirm('Are you sure you want to delete this user?')) {
       try {
-        await axios.delete(`/api/admin/users/${userId}`);
+        await axiosInstance.delete(`/api/admin/users/${userId}`);
         fetchUsers();
       } catch (err) {
         setError('Failed to delete user. Please try again.');
