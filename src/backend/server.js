@@ -40,6 +40,7 @@ app.use((req, res, next) => {
 const { router: authRoutes } = require('./routes/auth');
 const { router: notificationsRoutes } = require('./routes/notifications');
 const adminRoutes = require('./routes/admin');
+const dashboardRoutes = require('./routes/dashboard'); // Add this line
 const clientRoutes = require('./routes/clients');
 const solicitorRoutes = require('./routes/solicitors');
 const caseRoutes = require('./routes/cases');
@@ -53,6 +54,7 @@ app.get('/health', (req, res) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/notifications', notificationsRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/clients', clientRoutes);
 app.use('/api/solicitors', solicitorRoutes);
 app.use('/api/cases', caseRoutes);

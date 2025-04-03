@@ -78,12 +78,34 @@ async function initializeDatabase() {
       as: 'assignedSolicitor' 
     });
     
-    Case.hasMany(CaseActivity, { 
-      foreignKey: 'caseId', 
-      as: 'activities',
-      onDelete: 'CASCADE' 
+    // Add direct User-Case associations
+    User.hasMany(Case, {
+      foreignKey: 'clientId',
+      as: 'clientCases',
+      constraints: false
     });
-    CaseActivity.belongsTo(Case, { 
+    User.hasMany(Case, {
+      foreignKey: 'assignedSolicitorId',
+      as: 'solicitorCases',
+      constraints: false
+    });
+    Case.belongsTo(User, {
+      foreignKey: 'clientId',
+      as: 'clientUser',
+      constraints: false
+    });
+    Case.belongsTo(User, {
+      foreignKey: 'assignedSolicitorId',
+      as: 'solicitorUser',
+      constraints: false
+    });
+
+    Case.hasMany(CaseActivity, {
+      foreignKey: 'caseId',
+      as: 'activities',
+      onDelete: 'CASCADE'
+    });
+    CaseActivity.belongsTo(Case, {
       foreignKey: 'caseId'
     });
     

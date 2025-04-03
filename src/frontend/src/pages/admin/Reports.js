@@ -54,19 +54,33 @@ const Reports = () => {
 
   const fetchReportData = async () => {
     try {
+      setLoading(true);
       const response = await axiosInstance.get('/admin/reports', {
         params: { timeRange },
       });
-      setStats(response.data);
+      
+      // Normalize status keys to handle inconsistent casing
+      const normalizedData = { ...response.data };
+      if (normalizedData.casesByStatus) {
+        normalizedData.casesByStatus = Object.entries(normalizedData.casesByStatus).reduce((acc, [key, value]) => {
+          // Convert any status key to lowercase for consistent handling
+          const normalizedKey = typeof key === 'string' ? key.toLowerCase() : key;
+          acc[normalizedKey] = value;
+          return acc;
+        }, {});
+      }
+      
+      setStats(normalizedData);
       setLoading(false);
     } catch (err) {
+      console.error('Error fetching report data:', err);
       setError('Failed to fetch report data. Please try again later.');
       setLoading(false);
     }
   };
 
   const caseStatusData = {
-    labels: Object.keys(stats.casesByStatus).map(status => {
+    labels: Object.keys(stats.casesByStatus || {}).map(status => {
       if (typeof status === 'object' && status.status) {
         return status.status.charAt(0).toUpperCase() + status.status.slice(1);
       }
@@ -74,13 +88,15 @@ const Reports = () => {
     }),
     datasets: [
       {
-        data: Object.values(stats.casesByStatus).map(count => {
+        data: Object.values(stats.casesByStatus || {}).map(count => {
           return typeof count === 'object' && count.count !== undefined ? count.count : (typeof count === 'number' ? count : 0);
         }),
         backgroundColor: [
           'rgba(54, 162, 235, 0.8)',
           'rgba(255, 206, 86, 0.8)',
           'rgba(75, 192, 192, 0.8)',
+          'rgba(153, 102, 255, 0.8)',
+          'rgba(255, 159, 64, 0.8)',
         ],
         borderWidth: 1,
       },

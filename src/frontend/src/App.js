@@ -30,6 +30,7 @@ import CaseManagement from './pages/solicitor/CaseManagement';
 import AdminDashboard from './pages/admin/Dashboard';
 import UserManagement from './pages/admin/UserManagement';
 import CaseOverview from './pages/admin/CaseOverview';
+import AdminCaseDetails from './pages/admin/CaseDetails';
 import Reports from './pages/admin/Reports';
 
 // Theme configuration
@@ -204,6 +205,14 @@ function App() {
               element={
                 <ProtectedRoute allowedRoles={['admin']}>
                   <CaseOverview />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/cases/:id"
+              element={
+                <ProtectedRoute allowedRoles={['admin']}>
+                  <AdminCaseDetails />
                 </ProtectedRoute>
               }
             />

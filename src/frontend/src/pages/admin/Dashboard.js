@@ -34,54 +34,82 @@ import { fetchCases } from '../../redux/slices/casesSlice';
 import { Bar } from 'react-chartjs-2';
 import DataTable from '../../components/common/DataTable';
 
-const StatCard = ({ title, value, subtitle, icon, color, trend }) => (
-  <Card>
-    <CardContent>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3 }}>
-        <Box
-          sx={{
-            backgroundColor: `${color}.lighter`,
-            borderRadius: '50%',
-            width: 48,
-            height: 48,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center'
-          }}
-        >
-          {icon}
-        </Box>
-        {trend !== undefined && (
-          <Box sx={{ display: 'flex', alignItems: 'center' }}>
-            <TrendingUpIcon
-              fontSize="small"
-              sx={{ color: trend >= 0 ? 'success.main' : 'error.main' }}
-            />
-            <Typography
-              variant="body2"
-              sx={{ color: trend >= 0 ? 'success.main' : 'error.main' }}
-            >
-              {trend.toFixed(1)}%
-            </Typography>
+// Safely convert any value to a string representation
+const safeString = (value) => {
+  if (value === null || value === undefined) return 'N/A';
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  if (typeof value === 'object') {
+    // Handle Date objects
+    if (value instanceof Date) return value.toLocaleString();
+    // Array handling
+    if (Array.isArray(value)) return value.map(safeString).join(', ');
+    // Extract common properties from objects
+    return value.name || value.value || value.count || 
+           value.title || value.label || value.text ||
+           value.id || value.displayName || value.description ||
+           JSON.stringify(value);
+  }
+  return String(value);
+};
+
+const StatCard = ({ title, value, subtitle, icon, color, trend }) => {
+  // Safely extract primitive values for rendering
+  const displayValue = typeof value === 'object' 
+    ? (value?.count || value?.value || value?.name || value?.total || 0) 
+    : (value || 0);
+  
+  const displayTitle = typeof title === 'object'
+    ? (title?.name || title?.label || title?.role || 'Unknown')
+    : (title || 'Unknown');
+
+  return (
+    <Card>
+      <CardContent>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3 }}>
+          <Box
+            sx={{
+              backgroundColor: `${color}.lighter`,
+              borderRadius: '50%',
+              width: 48,
+              height: 48,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}
+          >
+            {icon}
           </Box>
-        )}
-      </Box>
-      <Typography variant="h4" gutterBottom>
-        {typeof value === 'object'
-          ? (value.count || value.value || value.name || 0)
-          : value}
-      </Typography>
-      <Typography variant="subtitle2" color="textSecondary">
-        {typeof title === 'object' ? (title.name || title.role || 'Unknown') : title}
-      </Typography>
-      {subtitle && (
-        <Typography variant="caption" color="textSecondary" display="block">
-          {subtitle}
+          {trend !== undefined && (
+            <Box sx={{ display: 'flex', alignItems: 'center' }}>
+              <TrendingUpIcon
+                fontSize="small"
+                sx={{ color: trend >= 0 ? 'success.main' : 'error.main' }}
+              />
+              <Typography
+                variant="body2"
+                sx={{ color: trend >= 0 ? 'success.main' : 'error.main' }}
+              >
+                {typeof trend === 'number' ? trend.toFixed(1) : '0.0'}%
+              </Typography>
+            </Box>
+          )}
+        </Box>
+        <Typography variant="h4" gutterBottom>
+          {displayValue}
         </Typography>
-      )}
-    </CardContent>
-  </Card>
-);
+        <Typography variant="subtitle2" color="textSecondary">
+          {displayTitle}
+        </Typography>
+        {subtitle && (
+          <Typography variant="caption" color="textSecondary" display="block">
+            {typeof subtitle === 'object' ? safeString(subtitle) : subtitle}
+          </Typography>
+        )}
+      </CardContent>
+    </Card>
+  );
+};
 
 const AdminDashboard = () => {
   const dispatch = useDispatch();
@@ -98,19 +126,35 @@ const AdminDashboard = () => {
     urgentCases: []
   });
 
+  // More robust stats validation to handle unexpected data types
   const validateStats = (data) => {
+    const overview = data?.overview || {};
+    const caseTypesData = data?.caseTypes || {};
+    
+    // Ensure numeric values
+    const ensureNumber = (val) => {
+      const num = Number(val);
+      return isNaN(num) ? 0 : num;
+    };
+    
+    // Process case types to ensure they're in a usable format
+    const processedCaseTypes = {};
+    Object.entries(caseTypesData).forEach(([key, value]) => {
+      if (typeof key === 'string') {
+        processedCaseTypes[key] = ensureNumber(
+          typeof value === 'object' ? value?.count : value
+        );
+      }
+    });
+    
     return {
-      totalCases: Number(data.overview.totalCases) || 0,
-      pendingCases: (Number(data.overview.newCases) || 0) + (Number(data.overview.assignedCases) || 0),
-      totalSolicitors: Number(data.overview.totalSolicitors) || 0,
-      totalClients: Number(data.overview.totalClients) || 0,
-      caseTypes: data.caseTypes ? Object.fromEntries(
-        Object.entries(data.caseTypes)
-          .filter(([key]) => typeof key === 'string')
-          .map(([key, value]) => [key, typeof value === 'object' ? value.count || 0 : (Number(value) || 0)])
-      ) : {},
-      recentActivity: Array.isArray(data.activities) ? data.activities : [],
-      urgentCases: Array.isArray(data.urgentCases) ? data.urgentCases : []
+      totalCases: ensureNumber(overview?.totalCases),
+      pendingCases: ensureNumber(overview?.newCases) + ensureNumber(overview?.assignedCases),
+      totalSolicitors: ensureNumber(overview?.totalSolicitors),
+      totalClients: ensureNumber(overview?.totalClients),
+      caseTypes: processedCaseTypes,
+      recentActivity: Array.isArray(data?.activities) ? data.activities : [],
+      urgentCases: Array.isArray(data?.urgentCases) ? data.urgentCases : []
     };
   };
   
@@ -128,10 +172,10 @@ const AdminDashboard = () => {
         setError(null);
         
         const [statsRes, trendsRes, activityRes, urgentRes] = await Promise.all([
-          axiosInstance.get('/admin/stats'),
-          axiosInstance.get('/admin/trends'),
-          axiosInstance.get('/admin/activity-log', { params: { limit: 5 } }),
-          axiosInstance.get('/admin/urgent-cases')
+          axiosInstance.get('/dashboard/stats'),
+          axiosInstance.get('/dashboard/trends'),
+          axiosInstance.get('/dashboard/activity-log', { params: { limit: 5 } }),
+          axiosInstance.get('/dashboard/urgent-cases')
         ]);
 
         const validatedStats = validateStats({
@@ -143,12 +187,18 @@ const AdminDashboard = () => {
         
         setStats(validatedStats);
 
+        // Safely parse trend data
+        const parseTrend = (value) => {
+          const parsed = parseFloat(value);
+          return isNaN(parsed) ? 0 : parsed;
+        };
+
         // Update trends with validated numbers
         setTrends({
-          totalCases: Number(trendsRes.data.totalCases) || 0,
-          pendingCases: Number(trendsRes.data.openCases) || 0,
-          totalSolicitors: Number(trendsRes.data.solicitorTrend) || 0,
-          totalClients: Number(trendsRes.data.clientTrend) || 0
+          totalCases: parseTrend(trendsRes.data.totalCases),
+          pendingCases: parseTrend(trendsRes.data.openCases),
+          totalSolicitors: parseTrend(trendsRes.data.solicitorTrend),
+          totalClients: parseTrend(trendsRes.data.clientTrend)
         });
 
       } catch (error) {
@@ -162,34 +212,39 @@ const AdminDashboard = () => {
     fetchDashboardData();
   }, [dispatch]);
 
-  const caseTypeData = {
-    labels: Object.keys(stats.caseTypes || {}).map(type => {
+  // Safely prepare chart data
+  const prepareCaseTypeData = () => {
+    const labels = Object.keys(stats.caseTypes || {}).map(type => {
       if (!type) return 'Uncategorized';
-      if (typeof type === 'object') {
-        return type.name ? type.name.charAt(0).toUpperCase() + type.name.slice(1) : 'Uncategorized';
-      }
-      return type.charAt(0).toUpperCase() + type.slice(1);
-    }).filter(Boolean),
-    datasets: [
-      {
-        label: 'Number of Cases',
-        data: Object.values(stats.caseTypes || {}).map(count => {
-          if (typeof count === 'object') {
-            return count.count !== undefined ? count.count : 0;
-          }
-          return typeof count === 'number' ? count : 0;
-        }),
-        backgroundColor: [
-          '#1976d2',
-          '#2196f3',
-          '#64b5f6',
-          '#90caf9',
-          '#bbdefb',
-          '#e3f2fd'
-        ]
-      }
-    ]
+      return typeof type === 'string' 
+        ? type.charAt(0).toUpperCase() + type.slice(1)
+        : 'Unknown';
+    }).filter(Boolean);
+
+    const data = Object.values(stats.caseTypes || {}).map(count => {
+      return typeof count === 'number' ? count : 0;
+    });
+
+    return {
+      labels,
+      datasets: [
+        {
+          label: 'Number of Cases',
+          data,
+          backgroundColor: [
+            '#1976d2',
+            '#2196f3',
+            '#64b5f6',
+            '#90caf9',
+            '#bbdefb',
+            '#e3f2fd'
+          ]
+        }
+      ]
+    };
   };
+
+  const caseTypeData = prepareCaseTypeData();
 
   const chartOptions = {
     responsive: true,
@@ -223,13 +278,14 @@ const AdminDashboard = () => {
   const getStatusColor = (status) => {
     if (!status) return 'default';
     
-    // Ensure status is a string
+    // Extract status string safely
     const statusStr = typeof status === 'object'
-      ? (status.status || status.value || status.type || '')
-      : (typeof status === 'string' ? status : '');
+      ? safeString(status.status || status.value || status.type || '').toLowerCase()
+      : (typeof status === 'string' ? status.toLowerCase() : '');
     
     switch (statusStr) {
       case 'new':
+      case 'open':
         return 'info';
       case 'under_review':
         return 'warning';
@@ -238,6 +294,7 @@ const AdminDashboard = () => {
       case 'in_progress':
         return 'warning';
       case 'pending_client':
+      case 'awaiting_client':
         return 'error';
       case 'closed':
         return 'success';
@@ -250,7 +307,7 @@ const AdminDashboard = () => {
     if (!status) return 'N/A';
     
     if (typeof status === 'object') {
-      const statusValue = status.status || status.value;
+      const statusValue = safeString(status.status || status.value);
       return statusValue
         ? statusValue.charAt(0).toUpperCase() + statusValue.slice(1)
         : 'Unknown';
@@ -263,12 +320,70 @@ const AdminDashboard = () => {
   const getTypeString = (type) => {
     if (!type) return 'N/A';
     if (typeof type === 'object') {
-      return (type.name || type.value || 'Unknown Type').charAt(0).toUpperCase() + 
-             (type.name || type.value || 'Unknown Type').slice(1);
+      const typeValue = safeString(type.name || type.value);
+      return typeValue.charAt(0).toUpperCase() + typeValue.slice(1);
     }
     return typeof type === 'string'
       ? type.charAt(0).toUpperCase() + type.slice(1)
       : 'Unknown Type';
+  };
+
+  // Format date safely
+  const formatDate = (dateValue) => {
+    if (!dateValue) return 'No date';
+    try {
+      return new Date(dateValue).toLocaleDateString();
+    } catch (e) {
+      return 'Invalid date';
+    }
+  };
+
+  // Prepare activity data for table with safe transformations
+  const prepareActivityData = () => {
+    return stats.recentActivity.map(activity => {
+      // Create a unique ID if none exists
+      const id = activity.id || activity._id || Math.random().toString();
+      
+      // Safely extract and format action
+      const action = typeof activity.action === 'object' 
+        ? getStatusString(activity.action) 
+        : safeString(activity.action);
+      
+      // Safely extract and format details
+      const details = (() => {
+        if (!activity.details) return 'N/A';
+        if (typeof activity.details === 'object') {
+          return safeString(activity.details);
+        }
+        return activity.details;
+      })();
+      
+      // Safely format performer
+      const performer = activity.performer 
+        ? safeString(activity.performer) 
+        : 'Unknown';
+      
+      // Safely format timestamp
+      const timestamp = activity.timestamp 
+        ? formatDate(activity.timestamp) 
+        : 'Unknown date';
+      
+      // Safely format case number
+      const caseNumber = activity.caseNumber 
+        ? String(activity.caseNumber) 
+        : 'Unknown';
+      
+      return {
+        id,
+        action,
+        details,
+        performer,
+        timestamp,
+        caseNumber,
+        // Include original data for column formatters
+        rawData: activity
+      };
+    });
   };
 
   return (
@@ -368,30 +483,34 @@ const AdminDashboard = () => {
             <List>
               {stats.urgentCases.length > 0 ? (
                 stats.urgentCases.map((caseItem, index) => {
+                  // Safely extract case number
+                  const caseNumber = caseItem.caseNumber || 'Unknown Case';
+                  
+                  // Safely format due date
                   let dueDate = 'No deadline set';
                   if (caseItem.expectedResponseBy) {
-                    try {
-                      dueDate = `Due ${new Date(caseItem.expectedResponseBy).toLocaleDateString()}`;
-                    } catch (e) {
-                      dueDate = 'Invalid deadline';
-                    }
+                    dueDate = `Due ${formatDate(caseItem.expectedResponseBy)}`;
                   }
                   
+                  // Safely get type and status
+                  const caseType = getTypeString(caseItem.type);
+                  const caseStatus = getStatusString(caseItem.status);
+                  
                   return (
-                    <React.Fragment key={caseItem._id || index}>
+                    <React.Fragment key={caseItem.id || caseItem._id || index}>
                       <ListItem>
                         <ListItemIcon>
                           <AccessTimeIcon color="error" />
                         </ListItemIcon>
                         <ListItemText
-                          primary={String(caseItem.caseNumber || 'Unknown Case')}
-                          secondary={`${getTypeString(caseItem.type)} - ${getStatusString(caseItem.status)} - ${dueDate}`}
+                          primary={String(caseNumber)}
+                          secondary={`${caseType} - ${caseStatus} - ${dueDate}`}
                         />
                         <Button
                           size="small"
                           variant="outlined"
                           color="primary"
-                          onClick={() => navigate(`/admin/cases/${caseItem._id}`)}
+                          onClick={() => navigate(`/admin/cases/${caseItem.id || caseItem._id}`)}
                         >
                           Review
                         </Button>
@@ -433,22 +552,25 @@ const AdminDashboard = () => {
                     field: 'performer',
                     headerName: 'By',
                     width: 150,
-                    valueFormatter: (params) => {
-                      if (!params.value) return 'Unknown';
-                      if (typeof params.value === 'object') {
-                        const name = params.value.name || params.value.fullName || params.value.displayName;
-                        return name ? String(name) : 'Unknown';
+                    renderCell: (params) => {
+                      // Use renderCell instead of valueFormatter for better control
+                      if (params.value && typeof params.value === 'object') {
+                        return params.value.name || params.value.fullName || 'Unknown';
                       }
-                      return String(params.value);
+                      return params.value || 'Unknown';
                     }
                   },
                   {
                     field: 'timestamp',
                     headerName: 'Time',
                     width: 200,
-                    valueFormatter: (params) => {
+                    renderCell: (params) => {
                       if (!params.value) return 'Unknown';
                       try {
+                        if (typeof params.value === 'string') {
+                          return params.value;
+                        }
+                        // If it's a date object or string date
                         return new Date(params.value).toLocaleString();
                       } catch (e) {
                         return 'Invalid date';
@@ -459,32 +581,12 @@ const AdminDashboard = () => {
                     field: 'caseNumber',
                     headerName: 'Case',
                     width: 150,
-                    valueFormatter: (params) => params.value ? String(params.value) : 'Unknown'
-                  },
-                  // Adding this hidden column to ensure status objects are properly formatted
-                  {
-                    field: 'status',
-                    headerName: 'Status',
-                    width: 0,
-                    hide: true,
-                    valueFormatter: (params) => params.value ? getStatusString(params.value) : 'Unknown'
+                    renderCell: (params) => {
+                      return params.value ? String(params.value) : 'Unknown';
+                    }
                   }
                 ]}
-                data={stats.recentActivity.map(activity => ({
-                  ...activity,
-                  id: activity._id || Math.random().toString(),
-                  // Format all potential object values into strings
-                  action: typeof activity.action === 'object' ? getStatusString(activity.action) : activity.action,
-                  details: (() => {
-                    if (!activity.details) return 'N/A';
-                    if (typeof activity.details === 'object') {
-                      const {name, role, status, ...rest} = activity.details;
-                      return name || role || status || Object.values(rest)[0] || 'N/A';
-                    }
-                    return activity.details;
-                  })(),
-                  status: typeof activity.status === 'object' ? getStatusString(activity.status) : activity.status
-                }))}
+                data={prepareActivityData()}
                 pagination={false}
               />
             ) : (

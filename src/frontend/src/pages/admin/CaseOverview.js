@@ -16,6 +16,7 @@ import {
   TextField,
   MenuItem,
   CircularProgress,
+  Alert,
 } from '@mui/material';
 import { Visibility as VisibilityIcon } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
@@ -27,13 +28,15 @@ const CaseOverview = () => {
     cases: [],
     currentPage: 1,
     totalPages: 1,
-    totalCases: 0
+    totalCases: 0,
+    itemsPerPage: 10
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [filters, setFilters] = useState({
     status: '',
     type: '',
+    priority: '',
     search: '',
     page: 1,
     limit: 10
@@ -49,18 +52,10 @@ const CaseOverview = () => {
       setLoading(true);
       setError(null);
       
-      // Create clean filter params to avoid sending undefined/null values
-      const cleanFilters = {};
-      Object.entries(filters).forEach(([key, value]) => {
-        if (value !== null && value !== undefined && value !== '') {
-          // Handle object values properly
-          if (typeof value === 'object') {
-            cleanFilters[key] = value.status || value.value || value.name;
-          } else {
-            cleanFilters[key] = value;
-          }
-        }
-      });
+      // Create clean filter params
+      const cleanFilters = Object.fromEntries(
+        Object.entries(filters).filter(([_, v]) => v !== null && v !== undefined && v !== '')
+      );
       
       console.log('Sending filters to API:', cleanFilters);
       
@@ -115,32 +110,103 @@ const CaseOverview = () => {
   };
 
   const handleViewCase = (caseId) => {
-    navigate(`/admin/cases/${caseId}`);
+    if (caseId) {
+      navigate(`/admin/cases/${caseId}`);
+    }
   };
 
   const getStatusColor = (status) => {
     if (!status) return 'default';
     
-    // Ensure status is a string
-    const statusStr = typeof status === 'object'
-      ? (status.status || status.value || status.type || '')
-      : (typeof status === 'string' ? status : '');
+    let statusStr = '';
+    
+    if (typeof status === 'object') {
+      statusStr = status.status || status.value || '';
+    } else if (typeof status === 'string') {
+      statusStr = status.toLowerCase();
+    }
     
     switch (statusStr) {
-      case 'new':
-        return 'info';
-      case 'under_review':
-        return 'warning';
-      case 'assigned':
-        return 'primary';
-      case 'in_progress':
-        return 'warning';
-      case 'pending_client':
-        return 'error';
-      case 'closed':
-        return 'success';
-      default:
-        return 'default';
+      case 'new': return 'info';
+      case 'under_review': return 'warning';
+      case 'assigned': return 'primary';
+      case 'in_progress': return 'warning';
+      case 'pending_client': return 'error';
+      case 'closed': return 'success';
+      default: return 'default';
+    }
+  };
+
+  // Format status text for display
+  const formatStatus = (status) => {
+    if (!status) return 'Unknown';
+    
+    let statusStr = '';
+    
+    if (typeof status === 'object') {
+      statusStr = status.status || status.value || '';
+    } else if (typeof status === 'string') {
+      statusStr = status;
+    }
+    
+    // Convert snake_case to Title Case
+    return statusStr
+      .split('_')
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+      .join(' ');
+  };
+
+  // Format case type for display
+  const formatType = (type) => {
+    if (!type) return 'Unknown';
+    
+    if (typeof type === 'object') {
+      return (type.name || type.value || 'Unknown').charAt(0).toUpperCase() + 
+             (type.name || type.value || 'Unknown').slice(1);
+    }
+    
+    if (typeof type === 'string') {
+      return type.charAt(0).toUpperCase() + type.slice(1);
+    }
+    
+    return 'Unknown';
+  };
+
+  // Get client name safely
+  const getClientName = (caseItem) => {
+    if (!caseItem.client) return 'Unknown Client';
+    
+    // Check if client has User property (nested association)
+    if (caseItem.client.User) {
+      return `${caseItem.client.User.firstName || ''} ${caseItem.client.User.lastName || ''}`.trim() || 'Unknown';
+    }
+    
+    // Direct properties on client
+    return `${caseItem.client.firstName || ''} ${caseItem.client.lastName || ''}`.trim() || 'Unknown';
+  };
+
+  // Get solicitor name safely
+  const getSolicitorName = (caseItem) => {
+    if (!caseItem.assignedSolicitor) return 'Unassigned';
+    
+    // Check if solicitor has User property (nested association)
+    if (caseItem.assignedSolicitor.User) {
+      return `${caseItem.assignedSolicitor.User.firstName || ''} ${caseItem.assignedSolicitor.User.lastName || ''}`.trim() || 'Unknown';
+    }
+    
+    // Direct properties on solicitor
+    return `${caseItem.assignedSolicitor.firstName || ''} ${caseItem.assignedSolicitor.lastName || ''}`.trim() || 'Unknown';
+  };
+
+  // Format date safely
+  const formatDate = (dateString) => {
+    if (!dateString) return 'Unknown';
+    
+    try {
+      return format(new Date(dateString), 'PPP');
+    } catch (err) {
+      console.error('Date formatting error:', err);
+      return 'Invalid Date';
     }
   };
 
@@ -160,25 +226,21 @@ const CaseOverview = () => {
     );
   }
 
-  if (error) {
-    return (
-      <Container>
-        <Typography color="error" align="center">
-          {error}
-        </Typography>
-      </Container>
-    );
-  }
-
   return (
     <Container>
       <Typography variant="h4" component="h1" gutterBottom>
         Case Overview
       </Typography>
 
+      {error && (
+        <Alert severity="error" sx={{ mb: 3 }}>
+          {error}
+        </Alert>
+      )}
+
       <Box mb={3}>
         <Paper sx={{ p: 2 }}>
-          <Box display="flex" gap={2}>
+          <Box display="flex" gap={2} flexWrap="wrap">
             <TextField
               select
               label="Status"
@@ -187,12 +249,12 @@ const CaseOverview = () => {
               sx={{ minWidth: 120 }}
             >
               <MenuItem value="">All</MenuItem>
-              <MenuItem value="new">New</MenuItem>
-              <MenuItem value="under_review">Under Review</MenuItem>
-              <MenuItem value="assigned">Assigned</MenuItem>
-              <MenuItem value="in_progress">In Progress</MenuItem>
-              <MenuItem value="pending_client">Pending Client</MenuItem>
-              <MenuItem value="closed">Closed</MenuItem>
+              <MenuItem value="NEW">New</MenuItem>
+              <MenuItem value="UNDER_REVIEW">Under Review</MenuItem>
+              <MenuItem value="ASSIGNED">Assigned</MenuItem>
+              <MenuItem value="IN_PROGRESS">In Progress</MenuItem>
+              <MenuItem value="PENDING_CLIENT">Pending Client</MenuItem>
+              <MenuItem value="CLOSED">Closed</MenuItem>
             </TextField>
             
             <TextField
@@ -203,14 +265,22 @@ const CaseOverview = () => {
               sx={{ minWidth: 200 }}
             >
               <MenuItem value="">All</MenuItem>
-              <MenuItem value="family">Family Law</MenuItem>
-              <MenuItem value="immigration">Immigration Law</MenuItem>
-              <MenuItem value="housing">Housing Law</MenuItem>
-              <MenuItem value="employment">Employment Law</MenuItem>
-              <MenuItem value="civil">Civil Law</MenuItem>
-              <MenuItem value="criminal">Criminal Law</MenuItem>
-              <MenuItem value="other">Other</MenuItem>
+              <MenuItem value="FAMILY">Family Law</MenuItem>
+              <MenuItem value="IMMIGRATION">Immigration Law</MenuItem>
+              <MenuItem value="HOUSING">Housing Law</MenuItem>
+              <MenuItem value="EMPLOYMENT">Employment Law</MenuItem>
+              <MenuItem value="CIVIL">Civil Law</MenuItem>
+              <MenuItem value="CRIMINAL">Criminal Law</MenuItem>
+              <MenuItem value="OTHER">Other</MenuItem>
             </TextField>
+            
+            <TextField
+              label="Search"
+              placeholder="Case number or description"
+              value={filters.search}
+              onChange={(e) => handleFilterChange('search', e.target.value)}
+              sx={{ flexGrow: 1, minWidth: 200 }}
+            />
           </Box>
         </Paper>
       </Box>
@@ -229,65 +299,46 @@ const CaseOverview = () => {
             </TableRow>
           </TableHead>
           <TableBody>
-            {casesData.cases.map((caseItem) => (
-                <TableRow key={caseItem._id}>
-                  <TableCell>{caseItem.caseNumber}</TableCell>
-                  <TableCell>
-                    {`${caseItem.client.firstName} ${caseItem.client.lastName}`}
-                  </TableCell>
-                  <TableCell>
-                    {caseItem.assignedSolicitor ?
-                      `${caseItem.assignedSolicitor.firstName} ${caseItem.assignedSolicitor.lastName}` :
-                      'Unassigned'}
-                  </TableCell>
+            {casesData.cases && casesData.cases.length > 0 ? (
+              casesData.cases.map((caseItem) => (
+                <TableRow key={caseItem.id || caseItem._id}>
+                  <TableCell>{caseItem.caseNumber || 'N/A'}</TableCell>
+                  <TableCell>{getClientName(caseItem)}</TableCell>
+                  <TableCell>{getSolicitorName(caseItem)}</TableCell>
                   <TableCell>
                     <Chip
-                      label={(() => {
-                        if (typeof caseItem.status === 'object') {
-                          const statusValue = caseItem.status.status || caseItem.status.value;
-                          return statusValue
-                            ? statusValue.charAt(0).toUpperCase() + statusValue.slice(1)
-                            : 'Unknown';
-                        }
-                        return typeof caseItem.status === 'string'
-                          ? caseItem.status.charAt(0).toUpperCase() + caseItem.status.slice(1)
-                          : 'Unknown';
-                      })()}
-                      color={getStatusColor(typeof caseItem.status === 'object' && caseItem.status.status
-                        ? caseItem.status.status
-                        : (typeof caseItem.status === 'string' ? caseItem.status : ''))}
+                      label={formatStatus(caseItem.status)}
+                      color={getStatusColor(caseItem.status)}
                       size="small"
                     />
                   </TableCell>
-                  <TableCell>
-                    {typeof caseItem.type === 'object'
-                      ? ((caseItem.type.name || caseItem.type.value || 'Unknown').charAt(0).toUpperCase() +
-                         (caseItem.type.name || caseItem.type.value || 'Unknown').slice(1))
-                      : (typeof caseItem.type === 'string'
-                          ? caseItem.type.charAt(0).toUpperCase() + caseItem.type.slice(1)
-                          : 'Unknown')}
-                  </TableCell>
-                  <TableCell>
-                    {format(new Date(caseItem.createdAt), 'PPP')}
-                  </TableCell>
+                  <TableCell>{formatType(caseItem.type)}</TableCell>
+                  <TableCell>{formatDate(caseItem.createdAt)}</TableCell>
                   <TableCell>
                     <IconButton
                       size="small"
-                      onClick={() => handleViewCase(caseItem._id)}
+                      onClick={() => handleViewCase(caseItem.id || caseItem._id)}
                     >
                       <VisibilityIcon />
                     </IconButton>
                   </TableCell>
                 </TableRow>
-              ))}
+              ))
+            ) : (
+              <TableRow>
+                <TableCell colSpan={7} align="center">
+                  No cases found
+                </TableCell>
+              </TableRow>
+            )}
           </TableBody>
         </Table>
         <TablePagination
           rowsPerPageOptions={[10, 25, 50]}
           component="div"
-          count={casesData.totalCases}
+          count={casesData.totalCases || 0}
           rowsPerPage={filters.limit}
-          page={filters.page - 1}
+          page={Math.max(0, filters.page - 1)}
           onPageChange={handleChangePage}
           onRowsPerPageChange={handleChangeRowsPerPage}
         />

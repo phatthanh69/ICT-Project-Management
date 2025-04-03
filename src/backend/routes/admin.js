@@ -24,73 +24,6 @@ const isAdmin = (req, res, next) => {
   next();
 };
 
-// Get system statistics
-router.get('/stats', authenticateToken, isAdmin, async (req, res) => {
-  try {
-    const now = new Date();
-    const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-
-    const [
-      totalCases,
-      newCases,
-      assignedCases,
-      resolvedCases,
-      totalClients,
-      totalSolicitors,
-      urgentCases,
-      deadlineApproaching
-    ] = await Promise.all([
-      Case.count(),
-      Case.count({ where: { status: 'new' } }),
-      Case.count({ where: { status: 'in_progress' } }),
-      Case.count({ where: { status: 'closed' } }),
-      Client.count(),
-      Solicitor.count(),
-      Case.count({ 
-        where: { 
-          priority: 'urgent',
-          status: { [Op.ne]: 'closed' }
-        }
-      }),
-      Case.count({
-        where: {
-          status: 'new',
-          createdAt: { [Op.lt]: oneDayAgo }
-        }
-      })
-    ]);
-
-    // Get case type distribution
-    const caseTypes = await Case.findAll({
-      attributes: [
-        'type',
-        [Sequelize.fn('COUNT', Sequelize.col('id')), 'count']
-      ],
-      group: ['type'],
-      raw: true
-    });
-
-    res.json({
-      overview: {
-        totalCases,
-        newCases,
-        assignedCases,
-        resolvedCases,
-        totalClients,
-        totalSolicitors,
-        urgentCases,
-        deadlineApproaching
-      },
-      caseTypes: caseTypes.reduce((acc, { type, count }) => {
-        acc[type] = parseInt(count);
-        return acc;
-      }, {})
-    });
-  } catch (error) {
-    res.status(500).json({ message: 'Error fetching statistics' });
-  }
-});
-
 // Get all cases with admin privileges
 router.get('/cases', authenticateToken, isAdmin, async (req, res) => {
   try {
@@ -134,7 +67,7 @@ router.get('/cases', authenticateToken, isAdmin, async (req, res) => {
           include: [{
             model: User,
             as: 'User',
-            attributes: ['firstName', 'lastName', 'email']
+            attributes: ['id', 'firstName', 'lastName', 'email']
           }]
         },
         {
@@ -143,7 +76,7 @@ router.get('/cases', authenticateToken, isAdmin, async (req, res) => {
           include: [{
             model: User,
             as: 'User',
-            attributes: ['firstName', 'lastName', 'email']
+            attributes: ['id', 'firstName', 'lastName', 'email']
           }]
         }
       ],
@@ -152,10 +85,20 @@ router.get('/cases', authenticateToken, isAdmin, async (req, res) => {
       limit: limitNum
     });
 
+    // Ensure all cases have proper structure for front-end
+    const normalizedCases = cases.map(caseItem => {
+      const plainCase = caseItem.get({ plain: true });
+      
+      // Ensure consistent IDs - frontend expects either id or _id
+      plainCase.id = plainCase.id || plainCase._id;
+      
+      return plainCase;
+    });
+
     const totalPages = Math.ceil(totalCases / limitNum);
 
     res.json({
-      cases,
+      cases: normalizedCases,
       currentPage: pageNum,
       totalPages,
       totalCases,
@@ -166,6 +109,55 @@ router.get('/cases', authenticateToken, isAdmin, async (req, res) => {
     // Send more detailed error information
     res.status(500).json({ 
       message: 'Error fetching cases',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+});
+
+// Get a specific case by ID
+router.get('/cases/:id', authenticateToken, isAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    console.log(`Fetching case with ID: ${id}`);
+    
+    const caseItem = await Case.findByPk(id, {
+      include: [
+        {
+          model: Solicitor,
+          as: 'assignedSolicitor',
+          include: [{
+            model: User,
+            as: 'User',
+            attributes: ['id', 'firstName', 'lastName', 'email', 'phoneNumber']
+          }]
+        },
+        {
+          model: Client,
+          as: 'client',
+          include: [{
+            model: User,
+            as: 'User',
+            attributes: ['id', 'firstName', 'lastName', 'email', 'phoneNumber']
+          }]
+        },
+        // Include any other relevant associations
+      ]
+    });
+    
+    if (!caseItem) {
+      return res.status(404).json({ message: 'Case not found' });
+    }
+    
+    // Convert to plain object and ensure ID consistency
+    const plainCase = caseItem.get({ plain: true });
+    plainCase.id = plainCase.id || plainCase._id;
+    
+    res.json(plainCase);
+  } catch (error) {
+    console.error('Error fetching case details:', error);
+    res.status(500).json({ 
+      message: 'Error fetching case details',
       error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
@@ -201,209 +193,179 @@ router.get('/users', authenticateToken, isAdmin, async (req, res) => {
   }
 });
 
-// Get cases requiring attention
-router.get('/urgent-cases', authenticateToken, isAdmin, async (req, res) => {
-  try {
-    const now = new Date();
-    const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-    
-    const urgentCases = await Case.findAll({
-      where: {
-        [Op.or]: [
-          { 
-            priority: 'urgent',
-            status: { [Op.ne]: 'closed' }
-          },
-          {
-            status: 'new',
-            createdAt: { [Op.lt]: oneDayAgo }
-          }
-        ]
-      },
-      include: [
-        {
-          model: Client,
-          as: 'client',
-          include: [{
-            model: User,
-            as: 'User',
-            attributes: ['firstName', 'lastName', 'email']
-          }]
-        },
-        {
-          model: Solicitor,
-          as: 'assignedSolicitor',
-          include: [{
-            model: User,
-            as: 'User',
-            attributes: ['firstName', 'lastName', 'email']
-          }]
-        }
-      ],
-      order: [['expectedResponseBy', 'ASC']]
-    });
-
-    res.json(urgentCases);
-  } catch (error) {
-    res.status(500).json({ message: 'Error fetching urgent cases' });
-  }
-});
-
 // Get reports
 router.get('/reports', authenticateToken, isAdmin, async (req, res) => {
   try {
     const { timeRange } = req.query;
     const now = new Date();
-    let startDate;
+    let startDate = new Date();
 
     // Calculate start date based on time range
     switch (timeRange) {
       case 'week':
-        startDate = new Date(now.setDate(now.getDate() - 7));
+        startDate.setDate(startDate.getDate() - 7);
         break;
       case 'month':
-        startDate = new Date(now.setMonth(now.getMonth() - 1));
+        startDate.setMonth(startDate.getMonth() - 1);
         break;
       case 'quarter':
-        startDate = new Date(now.setMonth(now.getMonth() - 3));
+        startDate.setMonth(startDate.getMonth() - 3);
         break;
       case 'year':
-        startDate = new Date(now.setFullYear(now.getFullYear() - 1));
+        startDate.setFullYear(startDate.getFullYear() - 1);
         break;
       default:
-        startDate = new Date(now.setMonth(now.getMonth() - 1)); // Default to last month
+        startDate.setMonth(startDate.getMonth() - 1); // Default to last month
     }
 
     // Get basic stats
-    const [totalCases, openCases, closedCases] = await Promise.all([
-      Case.count({ where: { createdAt: { [Op.gte]: startDate } } }),
-      Case.count({
-        where: {
-          createdAt: { [Op.gte]: startDate },
-          status: { [Op.ne]: 'closed' }
-        }
-      }),
-      Case.count({
-        where: {
-          createdAt: { [Op.gte]: startDate },
-          status: 'closed'
-        }
-      })
-    ]);
+    const totalCases = await Case.count({ 
+      where: { createdAt: { [Op.gte]: startDate } } 
+    });
+    
+    const openCases = await Case.count({
+      where: {
+        createdAt: { [Op.gte]: startDate },
+        status: { [Op.ne]: 'CLOSED' }
+      }
+    });
+    
+    const closedCases = await Case.count({
+      where: {
+        createdAt: { [Op.gte]: startDate },
+        status: 'CLOSED'
+      }
+    });
 
     // Get cases by status
-    const casesByStatus = await Case.findAll({
-      where: { createdAt: { [Op.gte]: startDate } },
+    const statusResults = await Case.findAll({
       attributes: [
         'status',
         [Sequelize.fn('COUNT', Sequelize.col('id')), 'count']
       ],
+      where: { createdAt: { [Op.gte]: startDate } },
       group: ['status'],
       raw: true
     });
 
     // Get cases by area of law (type)
-    const casesByAreaOfLaw = await Case.findAll({
-      where: { createdAt: { [Op.gte]: startDate } },
+    const areaResults = await Case.findAll({
       attributes: [
         'type',
         [Sequelize.fn('COUNT', Sequelize.col('id')), 'count']
       ],
+      where: { createdAt: { [Op.gte]: startDate } },
       group: ['type'],
       raw: true
     });
 
     // Get cases by month
-    const casesByMonth = await Case.findAll({
-      where: { createdAt: { [Op.gte]: startDate } },
+    const monthResults = await Case.findAll({
       attributes: [
-        [Sequelize.fn('DATE_TRUNC', 'month', Sequelize.col('createdAt')), 'month'],
+        [Sequelize.fn('to_char', Sequelize.col('createdAt'), 'Mon YYYY'), 'month'],
         [Sequelize.fn('COUNT', Sequelize.col('id')), 'count']
       ],
-      group: [Sequelize.fn('DATE_TRUNC', 'month', Sequelize.col('createdAt'))],
-      order: [[Sequelize.fn('DATE_TRUNC', 'month', Sequelize.col('createdAt')), 'ASC']],
+      where: { createdAt: { [Op.gte]: startDate } },
+      group: [Sequelize.fn('to_char', Sequelize.col('createdAt'), 'Mon YYYY')],
+      order: [[Sequelize.fn('MIN', Sequelize.col('createdAt')), 'ASC']],
       raw: true
     });
 
-    // Get average resolution time
-    const resolutionTime = await Case.findAll({
+    // Calculate average resolution time for closed cases
+    const closedCasesData = await Case.findAll({
       where: {
         createdAt: { [Op.gte]: startDate },
-        status: 'closed'
+        status: 'CLOSED'
       },
-      attributes: [
-        [
-          Sequelize.fn('AVG', 
-            Sequelize.fn('EXTRACT', Sequelize.literal('EPOCH FROM "updatedAt" - "createdAt"'))
-          ),
-          'avgTime'
-        ]
-      ],
       raw: true
     });
 
-    // Get solicitor performance
-    const solicitorPerformance = await Case.findAll({
-      where: { createdAt: { [Op.gte]: startDate } },
-      attributes: [
-        'assignedSolicitor',
-        [
-          Sequelize.fn('SUM', 
-            Sequelize.literal('CASE WHEN status != \'closed\' THEN 1 ELSE 0 END')
-          ),
-          'activeCases'
-        ],
-        [
-          Sequelize.fn('SUM', 
-            Sequelize.literal('CASE WHEN status = \'closed\' THEN 1 ELSE 0 END')
-          ),
-          'closedCases'
-        ],
-        [
-          Sequelize.fn('SUM', 
-            Sequelize.literal('CASE WHEN status = \'closed\' THEN EXTRACT(EPOCH FROM "updatedAt" - "createdAt") ELSE 0 END')
-          ),
-          'totalResolutionTime'
-        ]
-      ],
-      group: ['assignedSolicitor'],
+    let avgResolutionTime = 0;
+    if (closedCasesData.length > 0) {
+      const totalDays = closedCasesData.reduce((sum, caseItem) => {
+        const createdDate = new Date(caseItem.createdAt);
+        const closedDate = new Date(caseItem.updatedAt);
+        const diffTime = Math.abs(closedDate - createdDate);
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        return sum + diffDays;
+      }, 0);
+      avgResolutionTime = Math.round(totalDays / closedCasesData.length);
+    }
+
+    // Get solicitor performance data
+    const solicitors = await Solicitor.findAll({
       include: [{
         model: User,
-        as: 'assignedSolicitor',
+        as: 'User',
         attributes: ['firstName', 'lastName']
-      }],
-      raw: true
+      }]
     });
 
-    // Format response
+    const solicitorPerformance = [];
+    for (const solicitor of solicitors) {
+      const activeCases = await Case.count({
+        where: {
+          assignedSolicitorId: solicitor.id,
+          status: { [Op.ne]: 'CLOSED' },
+          createdAt: { [Op.gte]: startDate }
+        }
+      });
+
+      const closedCasesForSolicitor = await Case.findAll({
+        where: {
+          assignedSolicitorId: solicitor.id,
+          status: 'CLOSED',
+          createdAt: { [Op.gte]: startDate }
+        },
+        raw: true
+      });
+
+      let avgResolutionTimeForSolicitor = 0;
+      if (closedCasesForSolicitor.length > 0) {
+        const totalDays = closedCasesForSolicitor.reduce((sum, caseItem) => {
+          const createdDate = new Date(caseItem.createdAt);
+          const closedDate = new Date(caseItem.updatedAt);
+          const diffTime = Math.abs(closedDate - createdDate);
+          const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+          return sum + diffDays;
+        }, 0);
+        avgResolutionTimeForSolicitor = Math.round(totalDays / closedCasesForSolicitor.length);
+      }
+
+      solicitorPerformance.push({
+        id: solicitor.id,
+        name: `${solicitor.User.firstName} ${solicitor.User.lastName}`,
+        activeCases,
+        closedCases: closedCasesForSolicitor.length,
+        avgResolutionTime: avgResolutionTimeForSolicitor
+      });
+    }
+
+    // Format response data
+    const casesByStatus = {};
+    statusResults.forEach(item => {
+      casesByStatus[item.status] = parseInt(item.count);
+    });
+
+    const casesByAreaOfLaw = {};
+    areaResults.forEach(item => {
+      casesByAreaOfLaw[item.type] = parseInt(item.count);
+    });
+
+    const casesByMonth = {};
+    monthResults.forEach(item => {
+      casesByMonth[item.month] = parseInt(item.count);
+    });
+
     res.json({
       totalCases,
       openCases,
       closedCases,
-      averageResolutionTime: resolutionTime[0] ? 
-        Math.round(resolutionTime[0].avgTime / (60 * 60 * 24)) : 0, // Convert to days
-      casesByStatus: casesByStatus.reduce((acc, { status, count }) => {
-        acc[status] = parseInt(count);
-        return acc;
-      }, {}),
-      casesByAreaOfLaw: casesByAreaOfLaw.reduce((acc, { type, count }) => {
-        acc[type] = parseInt(count);
-        return acc;
-      }, {}),
-      casesByMonth: casesByMonth.reduce((acc, { month, count }) => {
-        const monthDate = new Date(month);
-        const monthName = monthDate.toLocaleString('default', { month: 'short' });
-        acc[`${monthName} ${monthDate.getFullYear()}`] = parseInt(count);
-        return acc;
-      }, {}),
-      solicitorPerformance: solicitorPerformance.map(s => ({
-        id: s['assignedSolicitor.id'],
-        name: `${s['assignedSolicitor.firstName']} ${s['assignedSolicitor.lastName']}`,
-        activeCases: parseInt(s.activeCases || 0),
-        closedCases: parseInt(s.closedCases || 0),
-        avgResolutionTime: parseInt(s.closedCases) ? 
-          Math.round(parseInt(s.totalResolutionTime) / parseInt(s.closedCases) / (60 * 60 * 24)) : 0 // Convert to days
-      }))
+      averageResolutionTime: avgResolutionTime,
+      casesByStatus,
+      casesByAreaOfLaw,
+      casesByMonth,
+      solicitorPerformance
     });
   } catch (error) {
     console.error('Report generation error:', error);
@@ -433,150 +395,6 @@ router.patch('/users/:userId', authenticateToken, isAdmin, async (req, res) => {
     res.json({ message: 'User status updated' });
   } catch (error) {
     res.status(500).json({ message: 'Error updating user status' });
-  }
-});
-
-// Get activity log
-router.get('/activity-log', authenticateToken, isAdmin, async (req, res) => {
-  try {
-    const { startDate, endDate, type, page = 1, limit = 20 } = req.query;
-    const whereClause = {};
-    
-    if (startDate && endDate) {
-      whereClause.timestamp = {
-        [Op.between]: [new Date(startDate), new Date(endDate)]
-      };
-    }
-
-    if (type) {
-      whereClause.action = type;
-    }
-
-    const offset = (parseInt(page) - 1) * parseInt(limit);
-    
-    const { count, rows: activities } = await ActivityLog.findAndCountAll({
-      where: whereClause,
-      include: [
-        {
-          model: Case,
-          attributes: ['id', 'caseNumber']
-        },
-        {
-          model: User,
-          as: 'performer',
-          attributes: ['firstName', 'lastName', 'role']
-        }
-      ],
-      order: [['timestamp', 'DESC']],
-      offset,
-      limit: parseInt(limit)
-    });
-
-    const formattedActivities = activities.map(activity => ({
-      caseNumber: activity.Case.caseNumber,
-      action: activity.action,
-      timestamp: activity.timestamp,
-      details: activity.details,
-      performer: {
-        name: `${activity.performer.firstName} ${activity.performer.lastName}`,
-        role: activity.performer.role
-      }
-    }));
-
-    res.json({
-      activities: formattedActivities,
-      totalActivities: count,
-      currentPage: parseInt(page),
-      totalPages: Math.ceil(count / parseInt(limit))
-    });
-  } catch (error) {
-    console.error('Error fetching activity log:', error);
-    res.status(500).json({ message: 'Error fetching activity log' });
-  }
-});
-
-// Get case trends
-router.get('/trends', authenticateToken, isAdmin, async (req, res) => {
-  try {
-    const now = new Date();
-    const lastMonth = new Date(now.setMonth(now.getMonth() - 1));
-    const twoMonthsAgo = new Date(now);
-    twoMonthsAgo.setMonth(twoMonthsAgo.getMonth() - 1);
-
-    const [currentStats, previousStats] = await Promise.all([
-      Case.findAll({
-        where: {
-          createdAt: { [Op.gte]: lastMonth }
-        },
-        attributes: [
-          [Sequelize.fn('COUNT', Sequelize.col('id')), 'totalCases'],
-          [
-            Sequelize.fn('SUM', 
-              Sequelize.literal('CASE WHEN status != \'closed\' THEN 1 ELSE 0 END')
-            ),
-            'openCases'
-          ],
-          [
-            Sequelize.fn('AVG', 
-              Sequelize.literal('CASE WHEN status = \'closed\' THEN EXTRACT(EPOCH FROM "updatedAt" - "createdAt") ELSE NULL END')
-            ),
-            'avgResponseTime'
-          ]
-        ],
-        raw: true
-      }),
-      Case.findAll({
-        where: {
-          createdAt: {
-            [Op.gte]: twoMonthsAgo,
-            [Op.lt]: lastMonth
-          }
-        },
-        attributes: [
-          [Sequelize.fn('COUNT', Sequelize.col('id')), 'totalCases'],
-          [
-            Sequelize.fn('SUM', 
-              Sequelize.literal('CASE WHEN status != \'closed\' THEN 1 ELSE 0 END')
-            ),
-            'openCases'
-          ],
-          [
-            Sequelize.fn('AVG', 
-              Sequelize.literal('CASE WHEN status = \'closed\' THEN EXTRACT(EPOCH FROM "updatedAt" - "createdAt") ELSE NULL END')
-            ),
-            'avgResponseTime'
-          ]
-        ],
-        raw: true
-      })
-    ]);
-
-    const calculateTrend = (current, previous) => {
-      const curr = parseFloat(current || 0);
-      const prev = parseFloat(previous || 0);
-      if (!prev) return 0;
-      return ((curr - prev) / prev) * 100;
-    };
-
-    const trends = {
-      totalCases: calculateTrend(
-        currentStats[0]?.totalCases,
-        previousStats[0]?.totalCases
-      ),
-      openCases: calculateTrend(
-        currentStats[0]?.openCases,
-        previousStats[0]?.openCases
-      ),
-      avgResponseTime: calculateTrend(
-        currentStats[0]?.avgResponseTime,
-        previousStats[0]?.avgResponseTime
-      )
-    };
-
-    res.json(trends);
-  } catch (error) {
-    console.error('Error calculating trends:', error);
-    res.status(500).json({ message: 'Error calculating trends' });
   }
 });
 
