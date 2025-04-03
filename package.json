@@ -1,0 +1,36 @@
+{
+  "name": "slls-legal-clinic",
+  "version": "1.0.0",
+  "description": "South London Law Society Legal Clinic Management System",
+  "main": "index.js",
+  "scripts": {
+    "start": "node src/backend/index.js",
+    "install:all": "npm install && cd src/backend && npm install && cd ../frontend && npm install",
+    "dev": "concurrently \"cd src/backend && npm run dev\" \"cd src/frontend && npm start\"",
+    "build": "cd src/frontend && npm run build",
+    "test": "concurrently \"cd src/backend && npm test\" \"cd src/frontend && npm test\"",
+    "seed": "cd src/backend && npm run seed",
+    "format": "cd src/frontend && npm run format"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/your-username/slls-legal-clinic.git"
+  },
+  "keywords": [
+    "legal",
+    "clinic",
+    "case-management",
+    "solicitor",
+    "client"
+  ],
+  "author": "South London Law Society",
+  "license": "UNLICENSED",
+  "dependencies": {
+    "concurrently": "^8.0.1",
+    "cross-env": "^7.0.3"
+  },
+  "engines": {
+    "node": ">=14.0.0",
+    "npm": ">=7.0.0"
+  }
+}
