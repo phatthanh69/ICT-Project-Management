@@ -45,7 +45,7 @@ const AvailableCases = () => {
         solicitorId: localStorage.getItem('userId') // Assume we store user ID in localStorage
       });
       // Remove the accepted case from the list
-      setCases(cases.filter(c => c._id !== caseId));
+      setCases(cases.filter(c => c.id !== caseId));
     } catch (err) {
       setError('Failed to accept case. Please try again later.');
     }
@@ -84,7 +84,7 @@ const AvailableCases = () => {
       ) : (
         <Grid container spacing={3}>
           {cases.map((caseItem) => (
-            <Grid item xs={12} sm={6} md={4} key={caseItem._id}>
+            <Grid item xs={12} sm={6} md={4} key={caseItem.id}>
               <Card>
                 <CardContent>
                   <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
@@ -128,13 +128,13 @@ const AvailableCases = () => {
                   <Button
                     size="small"
                     color="primary"
-                    onClick={() => handleAcceptCase(caseItem._id)}
+                    onClick={() => handleAcceptCase(caseItem.id)}
                   >
                     Accept Case
                   </Button>
                   <Button
                     size="small"
-                    onClick={() => window.open(`/solicitor/cases/${caseItem._id}`, '_blank')}
+                    onClick={() => window.open(`/solicitor/cases/${caseItem.id}`, '_blank')}
                   >
                     View Details
                   </Button>

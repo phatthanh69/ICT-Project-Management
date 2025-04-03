@@ -342,7 +342,7 @@ const AdminDashboard = () => {
   const prepareActivityData = () => {
     return stats.recentActivity.map(activity => {
       // Create a unique ID if none exists
-      const id = activity.id || activity._id || Math.random().toString();
+      const id = activity.id || Math.random().toString();
       
       // Safely extract and format action
       const action = typeof activity.action === 'object' 
@@ -497,7 +497,7 @@ const AdminDashboard = () => {
                   const caseStatus = getStatusString(caseItem.status);
                   
                   return (
-                    <React.Fragment key={caseItem.id || caseItem._id || index}>
+                    <React.Fragment key={caseItem.id || index}>
                       <ListItem>
                         <ListItemIcon>
                           <AccessTimeIcon color="error" />
@@ -510,7 +510,7 @@ const AdminDashboard = () => {
                           size="small"
                           variant="outlined"
                           color="primary"
-                          onClick={() => navigate(`/admin/cases/${caseItem.id || caseItem._id}`)}
+                          onClick={() => navigate(`/admin/cases/${caseItem.id}`)}
                         >
                           Review
                         </Button>

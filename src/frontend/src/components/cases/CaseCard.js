@@ -38,12 +38,12 @@ const priorityColors = {
   URGENT: '#d32f2f'
 };
 
-const CaseCard = ({ caseData, onAction }) => {
+const CaseCard = ({ caseData, onClick, onAction }) => {
   const navigate = useNavigate();
   const user = useSelector(state => state.auth.user);
 
   const {
-    _id,
+    id,
     caseNumber,
     type,
     status,
@@ -61,9 +61,13 @@ const CaseCard = ({ caseData, onAction }) => {
   const isUrgent = hoursRemaining <= 12 && status === 'OPEN';
 
   const handleClick = () => {
-    const basePath = user.role === 'client' ? '/client' : 
-                    user.role === 'solicitor' ? '/solicitor' : '/admin';
-    navigate(`${basePath}/cases/${_id}`);
+    if (onClick) {
+      onClick();
+    } else {
+      const basePath = user.role === 'client' ? '/client' :
+                      user.role === 'solicitor' ? '/solicitor' : '/admin';
+      navigate(`${basePath}/cases/${id}`);
+    }
   };
 
   return (

@@ -102,7 +102,7 @@ const notificationsSlice = createSlice({
       // Mark as Read
       .addCase(markNotificationAsRead.fulfilled, (state, action) => {
         const notification = state.notifications.find(
-          n => n._id === action.payload._id
+          n => n.id === action.payload.id
         );
         if (notification && !notification.read) {
           notification.read = true;

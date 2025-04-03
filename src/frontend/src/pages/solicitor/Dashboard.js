@@ -82,7 +82,7 @@ const SolicitorDashboard = () => {
   }, [dispatch]);
 
   // Filter cases
-  const myCases = cases.filter(c => c.assignedSolicitor?._id === user?.id || false);
+  const myCases = cases.filter(c => c.assignedSolicitor?.id === user?.id || false);
   const availableCases = cases.filter(c =>
     c.status === 'new' &&
     !c.assignedSolicitor &&
@@ -179,11 +179,11 @@ const SolicitorDashboard = () => {
             ) : (
               availableCases.slice(0, 3).map(caseItem => (
                 <CaseCard
-                  key={caseItem._id}
+                  key={caseItem.id}
                   caseData={caseItem}
                   onAction={(action) => {
                     if (action === 'take') {
-                      navigate(`/solicitor/cases/${caseItem._id}`);
+                      navigate(`/solicitor/cases/${caseItem.id}`);
                     }
                   }}
                 />
@@ -203,7 +203,7 @@ const SolicitorDashboard = () => {
             ) : (
               urgentCases.map(caseItem => (
                 <CaseCard
-                  key={caseItem._id}
+                  key={caseItem.id}
                   caseData={caseItem}
                 />
               ))
@@ -238,7 +238,7 @@ const SolicitorDashboard = () => {
                 .sort((a, b) => new Date(a.nextDeadline) - new Date(b.nextDeadline))
                 .slice(0, 5)
                 .map((caseItem, index) => (
-                  <React.Fragment key={caseItem._id}>
+                  <React.Fragment key={caseItem.id}>
                     <ListItem>
                       <ListItemIcon>
                         <AccessTimeIcon color="warning" />
@@ -249,7 +249,7 @@ const SolicitorDashboard = () => {
                       />
                       <Button
                         size="small"
-                        onClick={() => navigate(`/solicitor/cases/${caseItem._id}`)}
+                        onClick={() => navigate(`/solicitor/cases/${caseItem.id}`)}
                       >
                         View
                       </Button>

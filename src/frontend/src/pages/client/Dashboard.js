@@ -161,7 +161,7 @@ const ClientDashboard = () => {
             ) : (
               activeCases.slice(0, 3).map(caseItem => (
                 <CaseCard
-                  key={caseItem._id}
+                  key={caseItem.id}
                   caseData={caseItem}
                 />
               ))
@@ -185,7 +185,7 @@ const ClientDashboard = () => {
                 </ListItem>
               ) : (
                 recentNotifications.map((notification, index) => (
-                  <React.Fragment key={notification._id || index}>
+                  <React.Fragment key={notification.id || index}>
                     <ListItem>
                       <ListItemIcon>
                         {notification.type === 'case_update' ? (

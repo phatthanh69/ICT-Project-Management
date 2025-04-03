@@ -301,7 +301,7 @@ const CaseOverview = () => {
           <TableBody>
             {casesData.cases && casesData.cases.length > 0 ? (
               casesData.cases.map((caseItem) => (
-                <TableRow key={caseItem.id || caseItem._id}>
+                <TableRow key={caseItem.id}>
                   <TableCell>{caseItem.caseNumber || 'N/A'}</TableCell>
                   <TableCell>{getClientName(caseItem)}</TableCell>
                   <TableCell>{getSolicitorName(caseItem)}</TableCell>
@@ -317,7 +317,7 @@ const CaseOverview = () => {
                   <TableCell>
                     <IconButton
                       size="small"
-                      onClick={() => handleViewCase(caseItem.id || caseItem._id)}
+                      onClick={() => handleViewCase(caseItem.id)}
                     >
                       <VisibilityIcon />
                     </IconButton>

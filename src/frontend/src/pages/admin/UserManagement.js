@@ -90,7 +90,7 @@ const UserManagement = () => {
   const handleSubmit = async () => {
     try {
       if (editUser) {
-        await axiosInstance.put(`/api/admin/users/${editUser._id}`, formData);
+        await axiosInstance.put(`/api/admin/users/${editUser.id}`, formData);
       } else {
         await axiosInstance.post('/admin/users', formData);
       }
@@ -170,7 +170,7 @@ const UserManagement = () => {
             {users
               .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
               .map((user) => (
-                <TableRow key={user._id}>
+                <TableRow key={user.id}>
                   <TableCell>{user.name}</TableCell>
                   <TableCell>{user.email}</TableCell>
                   <TableCell>{user.role}</TableCell>
@@ -186,7 +186,7 @@ const UserManagement = () => {
                     <IconButton
                       size="small"
                       color="error"
-                      onClick={() => handleDeleteUser(user._id)}
+                      onClick={() => handleDeleteUser(user.id)}
                     >
                       <DeleteIcon />
                     </IconButton>

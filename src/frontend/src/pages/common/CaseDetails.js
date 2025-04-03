@@ -259,24 +259,24 @@ const CaseDetails = () => {
           <Card sx={{ mb: 3 }}>
             <CardHeader title="Client Information" />
             <CardContent>
-              {caseData.client && caseData.client.ClientUser ? (
+              {caseData.client && caseData.client.User ? (
                 <List dense>
                   <ListItem>
                     <ListItemText 
-                      primary="Name"
-                      secondary={`${caseData.client.ClientUser.firstName} ${caseData.client.ClientUser.lastName}`}
-                    />
-                  </ListItem>
-                  <ListItem>
-                    <ListItemText 
                       primary="Email"
-                      secondary={caseData.client.ClientUser.email}
+                      secondary={caseData.client.User.email}
                     />
                   </ListItem>
                   <ListItem>
                     <ListItemText 
-                      primary="Phone"
-                      secondary={caseData.client.ClientUser.phone || 'N/A'}
+                      primary="Address"
+                      secondary={`${caseData.client.street}, ${caseData.client.city}, ${caseData.client.postcode}`}
+                    />
+                  </ListItem>
+                  <ListItem>
+                    <ListItemText 
+                      primary="Employment Status"
+                      secondary={caseData.client.employmentStatus || 'N/A'}
                     />
                   </ListItem>
                 </List>
@@ -294,20 +294,26 @@ const CaseDetails = () => {
                 <List dense>
                   <ListItem>
                     <ListItemText 
-                      primary="Name"
-                      secondary={`${caseData.assignedSolicitor.SolicitorUser.firstName} ${caseData.assignedSolicitor.SolicitorUser.lastName}`}
+                      primary="Email"
+                      secondary={caseData.assignedSolicitor.User.email}
                     />
                   </ListItem>
                   <ListItem>
                     <ListItemText 
-                      primary="Email"
-                      secondary={caseData.assignedSolicitor.SolicitorUser.email}
+                      primary="Firm"
+                      secondary={caseData.assignedSolicitor.firmName}
                     />
                   </ListItem>
                   <ListItem>
                     <ListItemText 
                       primary="Phone"
-                      secondary={caseData.assignedSolicitor.SolicitorUser.phone || 'N/A'}
+                      secondary={caseData.assignedSolicitor.firmPhone || 'N/A'}
+                    />
+                  </ListItem>
+                  <ListItem>
+                    <ListItemText 
+                      primary="Experience"
+                      secondary={`${caseData.assignedSolicitor.yearsOfExperience} years`}
                     />
                   </ListItem>
                 </List>
@@ -324,7 +330,7 @@ const CaseDetails = () => {
             <Typography variant="h6" gutterBottom>
               Case Timeline
             </Typography>
-            <CaseTimeline activities={caseData.Timeline || []} />
+            <CaseTimeline activities={caseData.activities || []} />
           </Paper>
 
           {/* Notes */}
@@ -347,11 +353,11 @@ const CaseDetails = () => {
               </Button>
             </form>
             <List>
-              {caseData.Notes && caseData.Notes.map(note => (
+              {caseData.notes && caseData.notes.map(note => (
                 <ListItem key={note.id} divider>
                   <ListItemText
                     primary={note.content}
-                    secondary={`${note.NoteUser.firstName} ${note.NoteUser.lastName} - ${formatDate(note.createdAt)}`}
+                    secondary={`Added by ${note.author.role} - ${formatDate(note.createdAt)}`}
                   />
                 </ListItem>
               ))}

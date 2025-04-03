@@ -16,9 +16,13 @@ const checkCaseAccess = async (req, res, next) => {
     const userId = req.user.id;
     const userRole = req.user.role;
 
+    if (!userId) {
+      return res.status(400).json({ message: 'Missing user ID' });
+    }
+
     console.log('Checking case access:', { caseId, userId, role: userRole });
 
-    // Only fetch minimal case data needed for access check
+    // Fetch case with essential data for access check
     const caseItem = await Case.findByPk(caseId, {
       attributes: ['id', 'clientId', 'assignedSolicitorId', 'type', 'status'],
       raw: true
@@ -29,44 +33,66 @@ const checkCaseAccess = async (req, res, next) => {
       return res.status(404).json({ message: 'Case not found' });
     }
 
-    // Admin has access to all cases
+    // Admin has access to all active cases
     if (userRole === 'admin') {
-      req.caseItem = { id: caseItem.id };
+      req.caseItem = await Case.findByPk(caseId);
       return next();
     }
 
-    // Client can access cases they created
+    // Client access check
     if (userRole === 'client') {
+      // Verify client exists
+      const client = await Client.findOne({
+        where: {
+          id: userId
+        }
+      });
+
+      if (!client) {
+        console.log(`Invalid client access attempt: ${userId}`);
+        return res.status(403).json({ message: 'Access denied' });
+      }
+
       if (caseItem.clientId === userId) {
-        req.caseItem = { id: caseItem.id };
+        req.caseItem = await Case.findByPk(caseId);
         return next();
       }
+      
       console.log(`Access denied: Client ${userId} attempted to access case ${caseId}`);
       return res.status(403).json({ message: 'Access denied' });
     }
 
     // Solicitor access check
     if (userRole === 'solicitor') {
+      // Verify solicitor exists
+      const solicitor = await Solicitor.findOne({
+        where: {
+          id: userId
+        },
+        attributes: ['id', 'specializations', 'verified']
+      });
+
+      if (!solicitor) {
+        console.error(`Solicitor profile not found: ${userId}`);
+        return res.status(403).json({ message: 'Access denied' });
+      }
+
       // Direct access if assigned to case
       if (caseItem.assignedSolicitorId === userId) {
-        req.caseItem = { id: caseItem.id };
+        req.caseItem = await Case.findByPk(caseId);
         return next();
       }
       
       // Check specialization match for unassigned cases
-      if (!caseItem.assignedSolicitorId) {
-        const solicitor = await Solicitor.findByPk(userId, {
-          attributes: ['specializations'],
-          raw: true
-        });
-        
-        if (!solicitor) {
-          console.error(`Solicitor profile not found: ${userId}`);
-          return res.status(404).json({ message: 'Solicitor profile not found' });
+      if (!caseItem.assignedSolicitorId && caseItem.status === 'OPEN') {
+        // Validate specializations array
+        if (!Array.isArray(solicitor.specializations)) {
+          console.error(`Invalid specializations format for solicitor: ${userId}`);
+          return res.status(500).json({ message: 'Server configuration error' });
         }
         
         if (solicitor.specializations.includes(caseItem.type)) {
-          req.caseItem = { id: caseItem.id };
+          req.caseItem = await Case.findByPk(caseId);
           return next();
         }
       }
@@ -149,7 +175,7 @@ router.post('/',
       await Timeline.create({
         caseId: newCase.id,
         action: 'Case created',
-        actorId: req.user.id,
+        performedBy: req.user.id,  // Match the model's field name
         notes: 'New case submitted'
       });
 
@@ -203,8 +229,7 @@ router.get('/', authenticateToken, async (req, res) => {
         as: 'client',
         include: [{
           model: User,
-          as: 'User', // Changed from 'ClientUser' to 'User'
-          attributes: ['id', 'firstName', 'lastName', 'email']
+          attributes: ['id', 'email']
         }]
       },
       {
@@ -212,8 +237,7 @@ router.get('/', authenticateToken, async (req, res) => {
         as: 'assignedSolicitor',
         include: [{
           model: User,
-          as: 'User', // Changed from 'SolicitorUser' to 'User'
-          attributes: ['id', 'firstName', 'lastName', 'email']
+          attributes: ['id', 'email']
         }]
       }
     ];
@@ -304,7 +328,7 @@ router.get('/:id', authenticateToken, checkCaseAccess, async (req, res) => {
           include: [
             {
               model: User,
-              attributes: ['id', 'firstName', 'lastName', 'email', 'phone']
+              attributes: ['id', 'email']
             }
           ]
         },
@@ -314,31 +338,29 @@ router.get('/:id', authenticateToken, checkCaseAccess, async (req, res) => {
           include: [
             {
               model: User,
-              attributes: ['id', 'firstName', 'lastName', 'email', 'phone']
+              attributes: ['id', 'email']
             }
           ]
         },
         {
-          model: Timeline,
-          as: 'activities',
-          separate: true,
+          model: Timeline,  // This is CaseActivity aliased as Timeline
+          as: 'activities', // Match the association name from models/index.js
           include: [
             {
               model: User,
               as: 'performer',
-              attributes: ['id', 'firstName', 'lastName', 'role']
+              attributes: ['id', 'role']
             }
           ]
         },
         {
           model: Note,
           as: 'notes',
-          separate: true,
           include: [
             {
               model: User,
               as: 'author',
-              attributes: ['id', 'firstName', 'lastName', 'role']
+              attributes: ['id', 'role']
             }
           ]
         }
@@ -365,23 +387,36 @@ router.get('/:id', authenticateToken, checkCaseAccess, async (req, res) => {
 });
 
 // Update case
-router.patch('/:id', 
+router.patch('/:id',
   authenticateToken,
   checkCaseAccess,
+  [
+    body('status')
+      .optional()
+      .isIn(['OPEN', 'IN_PROGRESS', 'CLOSED', 'PENDING_REVIEW', 'AWAITING_CLIENT', 'ON_HOLD'])
+      .withMessage('Invalid status value'),
+    body('priority')
+      .optional()
+      .isIn(['LOW', 'MEDIUM', 'HIGH', 'URGENT'])
+      .withMessage('Invalid priority value'),
+    body('description')
+      .optional()
+      .trim()
+      .isLength({ min: 10, max: 1000 })
+      .withMessage('Description must be between 10 and 1000 characters')
+  ],
   async (req, res) => {
     try {
+      // Validate request body
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({
+          message: 'Invalid input',
+          errors: errors.array()
+        });
+      }
+
       const allowedUpdates = ['status', 'priority', 'description'];
-      
-      // Validate status if it's being updated
-      if (req.body.status && !['OPEN', 'IN_PROGRESS', 'CLOSED', 'PENDING_REVIEW', 'AWAITING_CLIENT', 'ON_HOLD'].includes(req.body.status)) {
-        return res.status(400).json({ message: 'Invalid status value' });
-      }
-      
-      // Validate priority if it's being updated
-      if (req.body.priority && !['LOW', 'MEDIUM', 'HIGH', 'URGENT'].includes(req.body.priority)) {
-        return res.status(400).json({ message: 'Invalid priority value' });
-      }
-      
       const updates = Object.keys(req.body)
         .filter(key => allowedUpdates.includes(key))
         .reduce((obj, key) => {
@@ -389,28 +424,74 @@ router.patch('/:id',
           return obj;
         }, {});
 
-      // Add timeline entry
-      await Timeline.create({
-        caseId: req.caseItem.id,
-        action: 'Case updated',
-        actorId: req.user.id,
-        notes: `Updated: ${Object.keys(updates).join(', ')}`
+      if (Object.keys(updates).length === 0) {
+        return res.status(400).json({ message: 'No valid updates provided' });
+      }
+
+      // Use transaction to ensure data consistency
+      // Import sequelize from models to use transactions
+      const { sequelize } = require('../models');
+      const result = await sequelize.transaction(async (t) => {
+        // Add timeline entry
+        await Timeline.create({
+          caseId: req.caseItem.id,
+          action: 'Case updated',
+          performedBy: req.user.id,  // Match the model's field name
+          notes: `Updated: ${Object.keys(updates).join(', ')}`,
+          details: JSON.stringify({
+            previous: {
+              status: req.caseItem.status,
+              priority: req.caseItem.priority,
+              description: req.caseItem.description
+            },
+            updated: updates
+          })
+        }, { transaction: t });
+
+        // Update case
+        await req.caseItem.update(updates, { transaction: t });
+        
+        // Fetch updated case with associations
+        return await Case.findByPk(req.caseItem.id, {
+          include: [
+            {
+              model: Timeline,
+              as: 'activities',
+              order: [['createdAt', 'DESC']]
+            },
+            {
+              model: Note,
+              as: 'notes',
+              order: [['createdAt', 'DESC']]
+            },
+            {
+              model: Client,
+              as: 'client',
+              include: [{
+                model: User,
+                attributes: ['id', 'firstName', 'lastName', 'email']
+              }]
+            },
+            {
+              model: Solicitor,
+              as: 'assignedSolicitor',
+              include: [{
+                model: User,
+                attributes: ['id', 'firstName', 'lastName', 'email']
+              }]
+            }
+          ],
+          transaction: t
+        });
       });
 
-      // Update case
-      await req.caseItem.update(updates);
-      
-      // Fetch updated case with associations
-      const updatedCase = await Case.findByPk(req.caseItem.id, {
-        include: [
-          { model: Timeline, as: 'activities' },
-          { model: Note, as: 'notes' }
-        ]
-      });
-
-      res.json(updatedCase);
+      res.json(result);
     } catch (error) {
-      res.status(500).json({ message: 'Error updating case' });
+      console.error('Error updating case:', error);
+      res.status(500).json({
+        message: 'Error updating case',
+        error: process.env.NODE_ENV === 'development' ? error.message : undefined
+      });
     }
 });
 
@@ -424,7 +505,7 @@ router.post('/:id/assign',
       
       // Check if solicitor exists and can take new cases
       const solicitor = await Solicitor.findByPk(solicitorId);
-      if (!solicitor || !await solicitor.canTakeNewCase()) {
+      if (!solicitor || !(await solicitor.canTakeNewCase())) {
         return res.status(400).json({ 
           message: 'Solicitor cannot take new cases at this time' 
         });
@@ -440,12 +521,9 @@ router.post('/:id/assign',
       await Timeline.create({
         caseId: req.caseItem.id,
         action: 'Case assigned to solicitor',
-        actorId: req.user.id,
-        notes: `Case assigned to ${solicitor.firstName} ${solicitor.lastName}`
+        performedBy: req.user.id,
+        details: { solicitorId }
       });
-
-      // Update solicitor's current cases
-      await solicitor.addCase(req.caseItem.id);
 
       // Fetch updated case with associations
       const updatedCase = await Case.findByPk(req.caseItem.id, {
@@ -457,8 +535,7 @@ router.post('/:id/assign',
             as: 'assignedSolicitor',
             include: [{
               model: User,
-              as: 'User', // Changed from 'SolicitorUser' to 'User'
-              attributes: ['id', 'firstName', 'lastName', 'email', 'phone']
+              attributes: ['id', 'email']
             }]
           }
         ]
@@ -466,14 +543,18 @@ router.post('/:id/assign',
 
       res.json(updatedCase);
     } catch (error) {
-      res.status(500).json({ message: 'Error assigning solicitor' });
+      console.error('Error assigning solicitor:', error);
+      res.status(500).json({ 
+        message: 'Error assigning solicitor',
+        error: process.env.NODE_ENV === 'development' ? error.message : undefined
+      });
     }
 });
 
 // Accept a case (for solicitors)
 router.post('/:id/accept',
   authenticateToken,
-  // Add access check for solicitor before case acceptance
+  checkCaseAccess, // Added case access check
   async (req, res, next) => {
     if (req.user.role !== 'solicitor') {
       return res.status(403).json({ message: 'Only solicitors can accept cases' });
@@ -482,67 +563,99 @@ router.post('/:id/accept',
   },
   async (req, res) => {
     try {
-      const { id } = req.params;
+      const caseId = req.params.id;
       const userId = req.user.id;
 
-      // Find the case
-      const caseItem = await Case.findByPk(id);
-      if (!caseItem) {
-        return res.status(404).json({ message: 'Case not found' });
+      if (!userId) {
+        return res.status(400).json({ message: 'Missing user ID' });
       }
 
-      // Check if case is available (not assigned yet)
-      if (caseItem.assignedSolicitorId) {
-        return res.status(400).json({ message: 'Case is already assigned' });
-      }
+      // Check if solicitor exists and can take cases
+      const solicitor = await Solicitor.findOne({
+        where: {
+          id: userId
+        },
+        attributes: ['id', 'specializations', 'verified']
+      });
 
-      // Check if the case matches solicitor's specialization
-      const solicitor = await Solicitor.findByPk(userId);
       if (!solicitor) {
         return res.status(404).json({ message: 'Solicitor profile not found' });
       }
+      
+      // Verify solicitor is verified
+      if (!solicitor.verified) {
+        return res.status(403).json({ message: 'Solicitor is not verified to take cases' });
+      }
 
-      if (!solicitor.specializations.includes(caseItem.type)) {
-        return res.status(400).json({ 
+      if (req.caseItem.status !== 'OPEN') {
+        return res.status(400).json({ message: 'Case is not available for acceptance' });
+      }
+
+      if (req.caseItem.assignedSolicitorId) {
+        return res.status(400).json({ message: 'Case is already assigned' });
+      }
+
+      if (!Array.isArray(solicitor.specializations) || !solicitor.specializations.includes(req.caseItem.type)) {
+        return res.status(400).json({
           message: 'Case type does not match solicitor specialization'
         });
       }
+      
+      // Check if the solicitor can take more cases
+      if (!(await solicitor.canTakeNewCase())) {
+        return res.status(403).json({ message: 'You have reached your maximum caseload' });
+      }
 
-      // Update case with solicitor assignment
-      await caseItem.update({
-        assignedSolicitorId: userId,
-        status: 'IN_PROGRESS'
+      // Use transaction to ensure data consistency
+      const { sequelize } = require('../models');
+      const result = await sequelize.transaction(async (t) => {
+        // Update case with solicitor assignment
+        await req.caseItem.update({
+          assignedSolicitorId: userId,
+          status: 'IN_PROGRESS'
+        }, { transaction: t });
+
+        // Add timeline entry
+        await Timeline.create({
+          caseId: caseId,
+          action: 'Case accepted',
+          performedBy: userId,
+          details: { solicitorId: userId }
+        }, { transaction: t });
+
+        // Fetch updated case with associations
+        return await Case.findByPk(caseId, {
+          include: [
+            {
+              model: Timeline,
+              as: 'activities',
+              order: [['createdAt', 'DESC']]
+            },
+            {
+              model: Note,
+              as: 'notes',
+              order: [['createdAt', 'DESC']]
+            },
+            {
+              model: Solicitor,
+              as: 'assignedSolicitor',
+              include: [{
+                model: User,
+                attributes: ['id', 'email']
+              }]
+            }
+          ],
+          transaction: t
+        });
       });
 
-      // Add timeline entry
-      await Timeline.create({
-        caseId: id,
-        action: 'Case accepted',
-        actorId: userId,
-        notes: 'Solicitor accepted case'
-      });
-
-      // Fetch updated case with associations
-      const updatedCase = await Case.findByPk(id, {
-        include: [
-          { model: Timeline, as: 'activities' },
-          { model: Note, as: 'notes' },
-          {
-            model: Solicitor,
-            as: 'assignedSolicitor',
-            include: [{
-              model: User,
-              as: 'User', // Changed from 'SolicitorUser' to 'User'
-              attributes: ['id', 'firstName', 'lastName', 'email', 'phone']
-            }]
-          }
-        ]
-      });
-
-      res.json(updatedCase);
+      res.json(result);
     } catch (error) {
       console.error('Error accepting case:', error);
-      res.status(500).json({ message: 'Error accepting case' });
+      res.status(500).json({
+        message: 'Error accepting case',
+        error: process.env.NODE_ENV === 'development' ? error.message : undefined
+      });
     }
 });
 
@@ -550,48 +663,100 @@ router.post('/:id/accept',
 router.post('/:id/notes',
   authenticateToken,
   checkCaseAccess,
-  [body('content').trim().notEmpty()],
+  [
+    body('content')
+      .trim()
+      .isLength({ min: 1, max: 2000 })
+      .withMessage('Note content must be between 1 and 2000 characters'),
+    body('isInternal')
+      .optional()
+      .isBoolean()
+      .withMessage('isInternal must be a boolean value')
+  ],
   async (req, res) => {
     try {
+      // Validate request
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
-        return res.status(400).json({ errors: errors.array() });
+        return res.status(400).json({
+          message: 'Invalid input',
+          errors: errors.array()
+        });
       }
 
       const { content, isInternal = false } = req.body;
+      const userId = req.user.id;
+      const userRole = req.user.role;
 
-      // Create new note
-      await Note.create({
-        caseId: req.caseItem.id,
-        content,
-        authorId: req.user.id,  // Changed from createdById to authorId
-        isPrivate: isInternal
-      });
+      // Only allow internal notes for solicitors and admins
+      if (isInternal && !['solicitor', 'admin'].includes(userRole)) {
+        return res.status(403).json({
+          message: 'Only solicitors and admins can create internal notes'
+        });
+      }
 
-      // Add timeline entry
-      await Timeline.create({
-        caseId: req.caseItem.id,
-        action: 'Note added',
-        actorId: req.user.id,
-        notes: isInternal ? 'Internal note added' : 'Note added'
-      });
+      // Use transaction to ensure data consistency
+      const { sequelize } = require('../models');
+      const result = await sequelize.transaction(async (t) => {
+        // Create new note
+        const newNote = await Note.create({
+          caseId: req.caseItem.id,
+          content: content.trim(),
+          createdBy: userId,
+          isPrivate: isInternal
+        }, { transaction: t });
 
-      // Fetch updated case with new note
-      const updatedCase = await Case.findByPk(req.caseItem.id, {
-        include: [
-          { model: Timeline },
-          { 
-            model: Note,
-            include: [
-              { model: User, as: 'createdBy', attributes: ['id', 'firstName', 'lastName', 'role'] }
-            ]
+        // Add timeline entry
+        await Timeline.create({
+          caseId: req.caseItem.id,
+          action: 'Note added',
+          performedBy: userId,
+          details: {
+            noteId: newNote.id,
+            isInternal,
+            contentPreview: content.substring(0, 50) + (content.length > 50 ? '...' : '')
           }
-        ]
+        }, { transaction: t });
+
+        // Fetch updated case with filtered notes based on user role
+        return await Case.findByPk(req.caseItem.id, {
+          include: [
+            {
+              model: Timeline,
+              as: 'activities',
+              separate: true,
+              order: [['createdAt', 'DESC']],
+              include: [{
+                model: User,
+                as: 'performer',
+                attributes: ['id', 'role']
+              }]
+            },
+            {
+              model: Note,
+              as: 'notes',
+              separate: true,
+              where: userRole === 'client' ? { isPrivate: false } : {},
+              required: false,
+              order: [['createdAt', 'DESC']],
+              include: [{
+                model: User,
+                as: 'author',
+                attributes: ['id', 'role']
+              }]
+            }
+          ],
+          transaction: t
+        });
       });
 
-      res.json(updatedCase);
+      res.json(result);
     } catch (error) {
-      res.status(500).json({ message: 'Error adding note' });
+      console.error('Error adding note:', error);
+      res.status(500).json({
+        message: 'Error adding note',
+        error: process.env.NODE_ENV === 'development' ? error.message : undefined
+      });
     }
 });
 

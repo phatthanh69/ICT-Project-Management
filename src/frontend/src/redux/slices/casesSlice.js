@@ -183,27 +183,27 @@ const casesSlice = createSlice({
       })
       // Update Case
       .addCase(updateCase.fulfilled, (state, action) => {
-        const index = state.cases.findIndex(c => c._id === action.payload._id);
+        const index = state.cases.findIndex(c => c.id === action.payload.id);
         if (index !== -1) {
           state.cases[index] = action.payload;
         }
-        if (state.currentCase?._id === action.payload._id) {
+        if (state.currentCase?.id === action.payload.id) {
           state.currentCase = action.payload;
         }
       })
       // Assign Case
       .addCase(assignCase.fulfilled, (state, action) => {
-        const index = state.cases.findIndex(c => c._id === action.payload._id);
+        const index = state.cases.findIndex(c => c.id === action.payload.id);
         if (index !== -1) {
           state.cases[index] = action.payload;
         }
-        if (state.currentCase?._id === action.payload._id) {
+        if (state.currentCase?.id === action.payload.id) {
           state.currentCase = action.payload;
         }
       })
       // Add Note
       .addCase(addCaseNote.fulfilled, (state, action) => {
-        if (state.currentCase?._id === action.payload._id) {
+        if (state.currentCase?.id === action.payload.id) {
           state.currentCase = action.payload;
         }
       });

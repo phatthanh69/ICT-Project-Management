@@ -24,9 +24,10 @@ const MyCases = () => {
     const fetchCases = async () => {
       try {
         const response = await axiosInstance.get('/cases');
-        
-        // The backend returns a data structure with cases inside
-        const casesData = response.data.cases || response.data;
+        const casesData = response.data.cases;
+        if (!casesData) {
+          throw new Error('Invalid response format - missing cases data');
+        }
         setCases(casesData);
         setLoading(false);
       } catch (err) {
@@ -43,8 +44,8 @@ const MyCases = () => {
     navigate('/client/new-case');
   };
 
-  const handleCaseClick = (caseId) => {
-    navigate(`/client/cases/${caseId}`);
+  const handleCaseClick = (caseData) => {
+    navigate(`/client/cases/${caseData.id}`);
   };
 
   if (loading) {
@@ -98,10 +99,10 @@ const MyCases = () => {
           </Grid>
         ) : (
           cases.map((caseItem) => (
-            <Grid item xs={12} sm={6} md={4} key={caseItem._id}>
+            <Grid item xs={12} sm={6} md={4} key={caseItem.id}>
               <CaseCard
                 caseData={caseItem}
-                onClick={() => handleCaseClick(caseItem._id)}
+                onClick={() => handleCaseClick(caseItem)}
               />
             </Grid>
           ))
