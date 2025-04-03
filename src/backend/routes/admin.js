@@ -66,7 +66,7 @@ router.get('/cases', authenticateToken, isAdmin, async (req, res) => {
           as: 'assignedSolicitor',
           include: [{
             model: User,
-            as: 'SolicitorUser', // Changed from 'User' to 'SolicitorUser'
+            as: 'User', // Changed from 'SolicitorUser' to 'User'
             attributes: ['id', 'firstName', 'lastName', 'email']
           }]
         },
@@ -75,7 +75,7 @@ router.get('/cases', authenticateToken, isAdmin, async (req, res) => {
           as: 'client',
           include: [{
             model: User,
-            as: 'ClientUser', // Changed from 'User' to 'ClientUser'
+            as: 'User', // Changed from 'ClientUser' to 'User'
             attributes: ['id', 'firstName', 'lastName', 'email']
           }]
         }
@@ -128,7 +128,7 @@ router.get('/cases/:id', authenticateToken, isAdmin, async (req, res) => {
           as: 'assignedSolicitor',
           include: [{
             model: User,
-            as: 'SolicitorUser', // Changed from 'User' to 'SolicitorUser'
+            as: 'User',
             attributes: ['id', 'firstName', 'lastName', 'email', 'phoneNumber']
           }]
         },
@@ -137,7 +137,7 @@ router.get('/cases/:id', authenticateToken, isAdmin, async (req, res) => {
           as: 'client',
           include: [{
             model: User,
-            as: 'ClientUser', // Changed from 'User' to 'ClientUser'
+            as: 'User',
             attributes: ['id', 'firstName', 'lastName', 'email', 'phoneNumber']
           }]
         },
@@ -296,7 +296,7 @@ router.get('/reports', authenticateToken, isAdmin, async (req, res) => {
     const solicitors = await Solicitor.findAll({
       include: [{
         model: User,
-        as: 'SolicitorUser', // Changed from 'User' to 'SolicitorUser'
+        as: 'User', // Changed from 'SolicitorUser' to 'User'
         attributes: ['firstName', 'lastName']
       }]
     });
@@ -334,7 +334,7 @@ router.get('/reports', authenticateToken, isAdmin, async (req, res) => {
 
       solicitorPerformance.push({
         id: solicitor.id,
-        name: `${solicitor.SolicitorUser.firstName} ${solicitor.SolicitorUser.lastName}`, // Updated to use SolicitorUser
+        name: `${solicitor.User.firstName} ${solicitor.User.lastName}`,
         activeCases,
         closedCases: closedCasesForSolicitor.length,
         avgResolutionTime: avgResolutionTimeForSolicitor

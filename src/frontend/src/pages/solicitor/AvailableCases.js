@@ -25,15 +25,19 @@ const AvailableCases = () => {
 
   const fetchAvailableCases = async () => {
     try {
+      // Query unassigned cases that match solicitor's specialization
       const response = await axiosInstance.get('/cases', {
-        params: { 
+        params: {
           status: 'OPEN',
-          assigned: false 
+          assigned: false,
+          // The backend will automatically filter by specialization
+          // based on the authenticated solicitor's profile
         }
       });
       setCases(response.data.cases || response.data);
       setLoading(false);
     } catch (err) {
+      console.error('Error fetching available cases:', err);
       setError('Failed to fetch available cases. Please try again later.');
       setLoading(false);
     }
@@ -41,13 +45,12 @@ const AvailableCases = () => {
 
   const handleAcceptCase = async (caseId) => {
     try {
-      await axiosInstance.post(`/api/cases/${caseId}/assign`, {
-        solicitorId: localStorage.getItem('userId') // Assume we store user ID in localStorage
-      });
+      await axiosInstance.post(`/cases/${caseId}/accept`);
       // Remove the accepted case from the list
       setCases(cases.filter(c => c.id !== caseId));
     } catch (err) {
-      setError('Failed to accept case. Please try again later.');
+      console.error('Error accepting case:', err);
+      setError(err.response?.data?.message || 'Failed to accept case. Please try again later.');
     }
   };
 

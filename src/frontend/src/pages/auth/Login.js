@@ -28,7 +28,7 @@ import { login, clearError } from '../../redux/slices/authSlice';
 const Login = () => {
   const dispatch = useDispatch();
   const navigate = useNavigate();
-  const { loading, error } = useSelector(state => state.auth);
+  const { loading, error, isAuthenticated, user } = useSelector(state => state.auth);
 
   const [formData, setFormData] = useState({
     email: '',
@@ -91,16 +91,23 @@ const Login = () => {
     }
 
     try {
-      const resultAction = await dispatch(login(formData));
-      if (login.fulfilled.match(resultAction)) {
-        const role = resultAction.payload.user.role;
-        navigate(role === 'client' ? '/client' : 
-                role === 'solicitor' ? '/solicitor' : '/admin');
-      }
-    } catch (err) {
-      console.error('Login failed:', err);
+      await dispatch(login(formData)).unwrap();
+    } catch (error) {
+      console.error('Login failed:', error);
     }
   };
+
+  // Handle navigation after successful login
+  React.useEffect(() => {
+    if (isAuthenticated && user?.role) {
+      const paths = {
+        client: '/client',
+        solicitor: '/solicitor',
+        admin: '/admin'
+      };
+      navigate(paths[user.role] || '/login', { replace: true });
+    }
+  }, [isAuthenticated, user, navigate]);
 
   return (
     <Box

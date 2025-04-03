@@ -1,15 +1,14 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import axiosInstance from '../../utils/axios';
 
-// API base URL - using environment variable
-const API_URL = process.env.REACT_APP_API_URL || '/api';
+// Note: API base URL is handled by axios instance
 
 // Async thunks
 export const login = createAsyncThunk(
   'auth/login',
   async (credentials, { rejectWithValue }) => {
     try {
-      const response = await axiosInstance.post(`${API_URL}/auth/login`, credentials);
+      const response = await axiosInstance.post('/auth/login', credentials);
       // Store token in localStorage
       localStorage.setItem('token', response.data.token);
       return response.data;
@@ -23,7 +22,7 @@ export const register = createAsyncThunk(
   'auth/register',
   async (userData, { rejectWithValue }) => {
     try {
-      const response = await axiosInstance.post(`${API_URL}/auth/register`, userData);
+      const response = await axiosInstance.post('/auth/register', userData);
       // Store token in localStorage
       localStorage.setItem('token', response.data.token);
       return response.data;
@@ -39,7 +38,7 @@ export const fetchCurrentUser = createAsyncThunk(
     try {
       const token = localStorage.getItem('token');
       if (!token) throw new Error('No token found');
-      const response = await axiosInstance.get(`${API_URL}/auth/me`);
+      const response = await axiosInstance.get('/auth/me');
       return response.data;
     } catch (error) {
       return rejectWithValue(error.response?.data?.message || 'Failed to fetch user data');
@@ -81,6 +80,8 @@ const authSlice = createSlice({
         state.error = null;
       })
       .addCase(login.fulfilled, (state, action) => {
+        // Ensure token is saved before updating state
+        localStorage.setItem('token', action.payload.token);
         state.isAuthenticated = true;
         state.user = action.payload.user;
         state.token = action.payload.token;
@@ -97,6 +98,8 @@ const authSlice = createSlice({
         state.error = null;
       })
       .addCase(register.fulfilled, (state, action) => {
+        // Ensure token is saved before updating state
+        localStorage.setItem('token', action.payload.token);
         state.isAuthenticated = true;
         state.user = action.payload.user;
         state.token = action.payload.token;

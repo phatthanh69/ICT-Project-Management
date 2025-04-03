@@ -95,10 +95,15 @@ const ProtectedRoute = ({ children, allowedRoles }) => {
 
 function App() {
   const dispatch = useDispatch();
-
-  useEffect(() => {
+useEffect(() => {
+  const token = localStorage.getItem('token');
+  if (!token) {
+    dispatch({ type: 'auth/logout' });
+  } else {
     dispatch(fetchCurrentUser());
-  }, [dispatch]);
+  }
+}, [dispatch]);
+
 
   return (
     <ThemeProvider theme={theme}>

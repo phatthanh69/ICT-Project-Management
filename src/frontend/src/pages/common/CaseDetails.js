@@ -234,17 +234,40 @@ const CaseDetails = () => {
                 </Grid>
               )}
               <Grid item>
-                <Button variant="outlined" onClick={() => handleStatusUpdate('IN_PROGRESS')}>
+                <Button
+                  variant="outlined"
+                  color="success"
+                  onClick={() => handleStatusUpdate('OPEN')}
+                  disabled={caseData.status === 'OPEN'}
+                >
+                  Open Case
+                </Button>
+              </Grid>
+              <Grid item>
+                <Button
+                  variant="outlined"
+                  onClick={() => handleStatusUpdate('IN_PROGRESS')}
+                  disabled={caseData.status === 'IN_PROGRESS'}
+                >
                   Mark In Progress
                 </Button>
               </Grid>
               <Grid item>
-                <Button variant="outlined" onClick={() => handleStatusUpdate('ON_HOLD')}>
+                <Button
+                  variant="outlined"
+                  onClick={() => handleStatusUpdate('ON_HOLD')}
+                  disabled={caseData.status === 'ON_HOLD'}
+                >
                   Put On Hold
                 </Button>
               </Grid>
               <Grid item>
-                <Button variant="outlined" color="error" onClick={() => handleStatusUpdate('CLOSED')}>
+                <Button
+                  variant="outlined"
+                  color="error"
+                  onClick={() => handleStatusUpdate('CLOSED')}
+                  disabled={caseData.status === 'CLOSED'}
+                >
                   Close Case
                 </Button>
               </Grid>

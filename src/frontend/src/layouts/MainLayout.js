@@ -36,7 +36,7 @@ const drawerWidth = 240;
 const MainLayout = () => {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [anchorEl, setAnchorEl] = useState(null);
-  const { user } = useSelector(state => state.auth);
+  const { user, loading, isAuthenticated } = useSelector(state => state.auth);
   const dispatch = useDispatch();
   const navigate = useNavigate();
 
@@ -111,6 +111,21 @@ const MainLayout = () => {
       </List>
     </div>
   );
+
+  // Handle loading state
+  if (loading) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
+        <Typography>Loading...</Typography>
+      </Box>
+    );
+  }
+
+  // Handle unauthenticated state
+  if (!isAuthenticated) {
+    navigate('/login');
+    return null;
+  }
 
   return (
     <Box sx={{ display: 'flex' }}>

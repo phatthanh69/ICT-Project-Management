@@ -28,4 +28,15 @@ const store = configureStore({
 });
 
 export const persistor = persistStore(store);
+
+// Expose store to window object for axios interceptor
+if (process.env.NODE_ENV !== 'production') {
+  window.store = store;
+} else {
+  // In production, expose minimal interface
+  window.store = {
+    dispatch: store.dispatch
+  };
+}
+
 export default store;

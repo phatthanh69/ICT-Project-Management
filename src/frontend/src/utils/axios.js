@@ -2,7 +2,7 @@ import axios from 'axios';
 
 // Create an instance for consistent API calling
 const axiosInstance = axios.create({
-  baseURL: process.env.REACT_APP_API_URL || '',
+  baseURL: process.env.REACT_APP_API_URL || '/api',
   headers: {
     'Content-Type': 'application/json',
   }
@@ -30,9 +30,16 @@ axiosInstance.interceptors.response.use(
   (error) => {
     // Handle 401 Unauthorized errors (token expired)
     if (error.response && error.response.status === 401) {
-      // Redirect to login page or refresh token
+      // Clear token and auth state
       localStorage.removeItem('token');
-      window.location.href = '/login';
+      // Dispatch logout action if Redux is available
+      if (window.store) {
+        window.store.dispatch({ type: 'auth/logout' });
+      }
+      // Only redirect if not already on login page
+      if (!window.location.pathname.includes('/login')) {
+        window.location.href = '/login';
+      }
     }
     return Promise.reject(error);
   }

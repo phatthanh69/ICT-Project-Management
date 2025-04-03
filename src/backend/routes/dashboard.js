@@ -124,10 +124,10 @@ router.get('/urgent-cases', authenticateToken, isAdmin, async (req, res) => {
         [Op.or]: [
           { 
             priority: 'URGENT',
-            status: { [Op.ne]: 'CLOSED' } // Keep this condition as CLOSED likely exists
+            status: { [Op.ne]: 'CLOSED' }
           },
           {
-            status: 'OPEN', // Changed to 'OPEN' as per Case model
+            status: 'OPEN',
             createdAt: { [Op.lt]: oneDayAgo }
           }
         ]
@@ -138,7 +138,7 @@ router.get('/urgent-cases', authenticateToken, isAdmin, async (req, res) => {
           as: 'client',
           include: [{
             model: User,
-            as: 'ClientUser', // Changed from 'User' to 'ClientUser'
+            as: 'User',
             attributes: ['firstName', 'lastName', 'email']
           }]
         },
@@ -147,7 +147,7 @@ router.get('/urgent-cases', authenticateToken, isAdmin, async (req, res) => {
           as: 'assignedSolicitor',
           include: [{
             model: User,
-            as: 'SolicitorUser', // Changed from 'User' to 'SolicitorUser'
+            as: 'User',
             attributes: ['firstName', 'lastName', 'email', 'phone']
           }]
         }

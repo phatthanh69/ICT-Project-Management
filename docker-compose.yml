@@ -26,7 +26,7 @@ services:
     build:
       context: ./src/backend
       dockerfile: Dockerfile
-    command: npm start
+    command: npm run dev
     ports:
       - "5555:5555"
     environment:

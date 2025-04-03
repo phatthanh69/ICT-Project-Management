@@ -128,9 +128,9 @@ router.post('/',
     body('type')
       .isIn([
         'family', 'immigration', 'housing', 'employment',
-        'civil', 'criminal', 'other'
+        'civil', 'criminal', 'corporate', 'property', 'other'
       ])
-      .withMessage('Invalid case type'),
+      .withMessage('Invalid case type. Must match available solicitor specializations'),
     body('description')
       .trim()
       .notEmpty()
@@ -244,7 +244,12 @@ router.get('/', authenticateToken, async (req, res) => {
 
     // Build query based on filters
     if (type) where.type = type;
-    if (status) where.status = status;
+    if (status) {
+      where.status = status.toUpperCase(); // Ensure consistent casing
+    } else if (userRole === 'solicitor' && !assigned) {
+      // For solicitors viewing available cases, default to OPEN status
+      where.status = 'OPEN';
+    }
     if (priority) where.priority = priority;
     if (search) {
       where[Op.or] = [
@@ -394,7 +399,7 @@ router.patch('/:id',
     body('status')
       .optional()
       .isIn(['OPEN', 'IN_PROGRESS', 'CLOSED', 'PENDING_REVIEW', 'AWAITING_CLIENT', 'ON_HOLD'])
-      .withMessage('Invalid status value'),
+      .withMessage('Invalid status value. Must be one of: OPEN, IN_PROGRESS, CLOSED, PENDING_REVIEW, AWAITING_CLIENT, ON_HOLD'),
     body('priority')
       .optional()
       .isIn(['LOW', 'MEDIUM', 'HIGH', 'URGENT'])
