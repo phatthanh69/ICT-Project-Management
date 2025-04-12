@@ -27,7 +27,8 @@ import {
   Assessment,
   Settings,
   ExitToApp,
-  Notifications
+  Notifications,
+  ViewKanban
 } from '@mui/icons-material';
 import { logout } from '../redux/slices/authSlice';
 
@@ -66,19 +67,22 @@ const MainLayout = () => {
         return [
           { text: 'Dashboard', icon: <Dashboard />, path: '/client' },
           { text: 'New Case', icon: <Add />, path: '/client/new-case' },
-          { text: 'My Cases', icon: <Cases />, path: '/client/cases' }
+          { text: 'My Cases', icon: <Cases />, path: '/client/cases' },
+          { text: 'Kanban Board', icon: <ViewKanban />, path: '/client/kanban' }
         ];
       case 'solicitor':
         return [
           { text: 'Dashboard', icon: <Dashboard />, path: '/solicitor' },
           { text: 'Available Cases', icon: <Cases />, path: '/solicitor/available-cases' },
-          { text: 'My Caseload', icon: <Assessment />, path: '/solicitor/my-cases' }
+          { text: 'My Caseload', icon: <Assessment />, path: '/solicitor/my-cases' },
+          { text: 'Kanban Board', icon: <ViewKanban />, path: '/solicitor/kanban' }
         ];
       case 'admin':
         return [
           { text: 'Dashboard', icon: <Dashboard />, path: '/admin' },
           { text: 'Users', icon: <People />, path: '/admin/users' },
           { text: 'Cases', icon: <Cases />, path: '/admin/cases' },
+          { text: 'Kanban Board', icon: <ViewKanban />, path: '/admin/kanban' },
           { text: 'Reports', icon: <Assessment />, path: '/admin/reports' }
         ];
       default:

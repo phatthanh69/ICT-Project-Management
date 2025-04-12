@@ -4,11 +4,13 @@ import storage from 'redux-persist/lib/storage'; // defaults to localStorage for
 import authReducer from './slices/authSlice';
 import casesReducer from './slices/casesSlice';
 import notificationsReducer from './slices/notificationsSlice';
+import kanbanReducer from './slices/kanbanSlice';
 
 const rootReducer = combineReducers({
   auth: authReducer,
   cases: casesReducer,
-  notifications: notificationsReducer
+  notifications: notificationsReducer,
+  kanban: kanbanReducer
 });
 
 const persistConfig = {

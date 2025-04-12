@@ -40,10 +40,11 @@ app.use((req, res, next) => {
 const { router: authRoutes } = require('./routes/auth');
 const { router: notificationsRoutes } = require('./routes/notifications');
 const adminRoutes = require('./routes/admin');
-const dashboardRoutes = require('./routes/dashboard'); // Add this line
+const dashboardRoutes = require('./routes/dashboard');
 const clientRoutes = require('./routes/clients');
 const solicitorRoutes = require('./routes/solicitors');
 const caseRoutes = require('./routes/cases');
+const kanbanRoutes = require('./routes/kanban'); // Add this line
 
 // Health check endpoint
 app.get('/health', (req, res) => {
@@ -58,6 +59,7 @@ app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/clients', clientRoutes);
 app.use('/api/solicitors', solicitorRoutes);
 app.use('/api/cases', caseRoutes);
+app.use('/api/kanban', kanbanRoutes); // Add this line
 
 // Error handling middleware
 app.use((err, req, res, next) => {

@@ -32,6 +32,9 @@ import UserManagement from './pages/admin/UserManagement';
 import CaseOverview from './pages/admin/CaseOverview';
 import Reports from './pages/admin/Reports';
 
+// Common Pages
+import KanbanBoard from './pages/common/KanbanBoard';
+
 // Theme configuration
 const theme = createTheme({
   palette: {
@@ -152,6 +155,14 @@ useEffect(() => {
                 </ProtectedRoute>
               }
             />
+            <Route
+              path="/client/kanban"
+              element={
+                <ProtectedRoute allowedRoles={['client']}>
+                  <KanbanBoard />
+                </ProtectedRoute>
+              }
+            />
 
             {/* Solicitor Routes */}
             <Route
@@ -183,6 +194,14 @@ useEffect(() => {
               element={
                 <ProtectedRoute allowedRoles={['solicitor']}>
                   <CaseDetails />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/solicitor/kanban"
+              element={
+                <ProtectedRoute allowedRoles={['solicitor']}>
+                  <KanbanBoard />
                 </ProtectedRoute>
               }
             />
@@ -225,6 +244,14 @@ useEffect(() => {
               element={
                 <ProtectedRoute allowedRoles={['admin']}>
                   <Reports />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/kanban"
+              element={
+                <ProtectedRoute allowedRoles={['admin']}>
+                  <KanbanBoard />
                 </ProtectedRoute>
               }
             />
