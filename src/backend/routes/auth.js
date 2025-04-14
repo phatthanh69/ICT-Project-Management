@@ -201,10 +201,21 @@ const authenticateToken = async (req, res, next) => {
     }
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    console.log('Token decoded:', decoded); // Debug: log the decoded token
+    console.log('Token decoded:', decoded); // Keep this debug log
     
-    // Load user data based on role with proper inheritance
+    // Load user with the right model based on role
     let user;
+    
+    // First, check if the user exists in the base User model
+    const baseUser = await User.findByPk(decoded.userId, {
+      attributes: { exclude: ['password'] }
+    });
+    
+    if (!baseUser) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    
+    // Then load the specific role model data
     switch (decoded.role) {
       case 'admin':
         user = await Admin.findByPk(decoded.userId, {
@@ -224,30 +235,26 @@ const authenticateToken = async (req, res, next) => {
         });
         break;
       default:
-        user = await User.findByPk(decoded.userId, {
-          attributes: { exclude: ['password'] }
-        });
+        // If role is not recognized, just use the base user data
+        user = baseUser;
     }
 
-    // Ensure we have the base User data
-    const baseUser = await User.findByPk(decoded.userId, {
-      attributes: { exclude: ['password'] }
-    });
-
-    if (!user) {
-      return res.status(404).json({ message: 'User not found' });
+    // If specific role model wasn't found but base user exists, use base user
+    if (!user && baseUser) {
+      console.warn(`Role-specific model not found for role: ${decoded.role}, using base user`);
+      user = baseUser;
     }
 
     // Merge base user data with role-specific data
-    user = {
+    const mergedUser = {
       ...baseUser.toJSON(),
-      ...user.toJSON(),
+      ...(user ? user.toJSON() : {}),
       role: decoded.role // Ensure role is always set from the token
     };
     
-    console.log('User with role assigned:', { id: user.id, role: user.role });
+    console.log('User with role assigned:', { id: mergedUser.id, role: mergedUser.role });
 
-    req.user = user;
+    req.user = mergedUser;
     next();
   } catch (error) {
     console.error('Authentication error:', error);
@@ -266,10 +273,10 @@ router.get('/me', authenticateToken, async (req, res) => {
     console.log('Sending user data:', {
       id: req.user.id,
       role: req.user.role,
-      data: req.user
+      email: req.user.email
     });
 
-    // Since we've already merged the data in authenticateToken, we can send it directly
+    // Send the merged user data
     res.json(req.user);
   } catch (error) {
     console.error('Error fetching user data:', error);

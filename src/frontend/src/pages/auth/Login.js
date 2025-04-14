@@ -23,7 +23,7 @@ import {
   Email as EmailIcon,
   Lock as LockIcon
 } from '@mui/icons-material';
-import { login, clearError } from '../../redux/slices/authSlice';
+import { login, clearError, fetchCurrentUser } from '../../redux/slices/authSlice';
 
 const Login = () => {
   const dispatch = useDispatch();
@@ -39,28 +39,21 @@ const Login = () => {
   const [validationErrors, setValidationErrors] = useState({});
   const [showPassword, setShowPassword] = useState(false);
 
-  const handleChange = (e) => {
+  const handleChange = React.useCallback((e) => {
     const { name, value } = e.target;
     setFormData(prev => ({
       ...prev,
       [name]: value
     }));
 
-    // Clear validation error when field is updated
-    if (validationErrors[name]) {
-      setValidationErrors(prev => ({
-        ...prev,
-        [name]: null
-      }));
-    }
-
-    // Clear any API errors
-    if (error) {
+    // Clear error states only when there are actual errors
+    if (validationErrors[name] || error) {
+      setValidationErrors(prev => ({ ...prev, [name]: null }));
       dispatch(clearError());
     }
-  };
+  }, [dispatch, error, validationErrors]);
 
-  const validateForm = () => {
+  const validateForm = React.useCallback(() => {
     const errors = {};
 
     if (!formData.email) {
@@ -79,40 +72,87 @@ const Login = () => {
       errors.role = 'Please select your role';
     }
 
-    setValidationErrors(errors);
-    return Object.keys(errors).length === 0;
-  };
+    // Only update validation errors if they've changed
+    setValidationErrors(prev => {
+      const isEqual = JSON.stringify(prev) === JSON.stringify(errors);
+      return isEqual ? prev : errors;
+    });
 
-  const handleSubmit = async (e) => {
+    return Object.keys(errors).length === 0;
+  }, [formData]);
+
+  const handleSubmit = React.useCallback(async (e) => {
     e.preventDefault();
 
     if (!validateForm()) {
       return;
     }
+    
+    console.log('Submitting login form:', formData);
 
     try {
-      await dispatch(login(formData)).unwrap();
+      const result = await dispatch(login(formData)).unwrap();
+      console.log('Login success, result:', result);
+      
+      // Force auth check after login (might help with race conditions)
+      dispatch(fetchCurrentUser());
     } catch (error) {
-      console.error('Login failed:', error);
+      console.error('Login unwrap error:', error);
     }
-  };
+  }, [dispatch, formData, validateForm]);
+
+  // Add a useEffect to check auth state on component mount
+  React.useEffect(() => {
+    console.log('Login component mounted, auth state:', { 
+      isAuthenticated, 
+      user: user ? `${user.role}:${user.email}` : 'none',
+      hasToken: !!localStorage.getItem('token')
+    });
+  }, []);
 
   // Handle navigation after successful login
   React.useEffect(() => {
-    if (isAuthenticated && user?.role) {
-      const paths = {
-        client: '/client',
-        solicitor: '/solicitor',
-        admin: '/admin'
-      };
-      navigate(paths[user.role] || '/login', { replace: true });
+    if (!isAuthenticated || !user) return;
+    
+    console.log('Auth state updated - authenticated:', isAuthenticated, 'user:', user);
+    
+    if (!user.role) {
+      console.error('User is missing role property:', user);
+      return;
     }
+
+    const paths = {
+      client: '/client',
+      solicitor: '/solicitor',
+      admin: '/admin'
+    };
+
+    // Log the navigation attempt for debugging
+    const targetPath = paths[user.role] || '/login';
+    console.log(`Navigating to ${targetPath} for role ${user.role}`);
+    
+    // Use a small timeout to ensure state is fully updated
+    const timer = setTimeout(() => {
+      navigate(targetPath, { replace: true });
+    }, 100);
+    
+    return () => clearTimeout(timer);
   }, [isAuthenticated, user, navigate]);
+
+  // Clear any lingering errors when component unmounts
+  React.useEffect(() => {
+    return () => {
+      if (error) {
+        dispatch(clearError());
+      }
+    };
+  }, [dispatch, error]);
 
   return (
     <Box
       component="form"
       onSubmit={handleSubmit}
+      noValidate
       sx={{
         width: '100%',
         maxWidth: 400

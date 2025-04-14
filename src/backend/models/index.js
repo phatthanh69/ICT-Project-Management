@@ -23,6 +23,7 @@ const Client = require('./Client');
 const Solicitor = require('./Solicitor');
 const { Case, CaseActivity, CaseNote, CaseDeadline } = require('./Case');
 const Rating = require('./Rating');
+const CaseDocument = require('./CaseDocument');
 
 // Initialize models and create tables
 async function initializeDatabase() {
@@ -108,6 +109,25 @@ async function initializeDatabase() {
       foreignKey: 'caseId'
     });
 
+    // Document associations
+    Case.hasMany(CaseDocument, {
+      foreignKey: 'caseId',
+      as: 'documents',
+      onDelete: 'CASCADE'
+    });
+    CaseDocument.belongsTo(Case, {
+      foreignKey: 'caseId'
+    });
+
+    User.hasMany(CaseDocument, {
+      foreignKey: 'uploadedBy',
+      as: 'uploadedDocuments'
+    });
+    CaseDocument.belongsTo(User, {
+      foreignKey: 'uploadedBy',
+      as: 'uploader'
+    });
+
     // Activity associations
     User.hasMany(CaseActivity, {
       foreignKey: 'performedBy',
@@ -188,5 +208,6 @@ module.exports = {
   CaseActivity,
   CaseNote,
   CaseDeadline,
-  Rating
+  Rating,
+  CaseDocument
 };

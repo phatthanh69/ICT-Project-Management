@@ -377,24 +377,67 @@ router.get('/reports', authenticateToken, isAdmin, async (req, res) => {
 router.patch('/users/:userId', authenticateToken, isAdmin, async (req, res) => {
   try {
     const { userId } = req.params;
-    const { verified, active } = req.body;
+    const { firstName, lastName, email, phone, role } = req.body;
 
     const user = await User.findByPk(userId);
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
     }
 
-    if (typeof verified === 'boolean' && user.role === 'solicitor') {
-      await Solicitor.update({ verified }, { where: { id: userId } });
+    // Store the old role to check if it changed
+    const oldRole = user.role;
+
+    // Update user fields
+    await User.update(
+      { firstName, lastName, email, phone, role },
+      { where: { id: userId } }
+    );
+
+    // If role has changed, handle profile tables
+    if (role && role !== oldRole) {
+      // Remove old role profile
+      switch (oldRole) {
+        case 'client':
+          await Client.destroy({ where: { id: userId } });
+          break;
+        case 'solicitor':
+          await Solicitor.destroy({ where: { id: userId } });
+          break;
+        case 'admin':
+          await Admin.destroy({ where: { id: userId } });
+          break;
+      }
+
+      // Create new role profile
+      switch (role) {
+        case 'client':
+          await Client.create({ id: userId });
+          break;
+        case 'solicitor':
+          await Solicitor.create({
+            id: userId,
+            solicitorNumber: `SN-${Date.now()}`,
+            firmName: 'TBD',
+            specializations: []
+          });
+          break;
+        case 'admin':
+          await Admin.create({
+            id: userId,
+            permissions: ['manage_users', 'manage_cases', 'view_reports']
+          });
+          break;
+      }
     }
 
-    if (typeof active === 'boolean') {
-      await User.update({ active }, { where: { id: userId } });
-    }
+    const updatedUser = await User.findByPk(userId, {
+      attributes: { exclude: ['password'] }
+    });
 
-    res.json({ message: 'User status updated' });
+    res.json(updatedUser);
   } catch (error) {
-    res.status(500).json({ message: 'Error updating user status' });
+    console.error('Error updating user:', error);
+    res.status(500).json({ message: 'Error updating user details' });
   }
 });
 

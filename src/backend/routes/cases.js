@@ -1,13 +1,47 @@
 const express = require('express');
 const router = express.Router();
 const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
 const { body, validationResult } = require('express-validator');
 const { authenticateToken } = require('./auth');
 const { Op } = require('sequelize');
-const { Case, User, Solicitor, Client, CaseActivity: Timeline, CaseNote: Note } = require('../models');
+const {
+  Case,
+  User,
+  Solicitor,
+  Client,
+  CaseActivity: Timeline,
+  CaseNote: Note,
+  CaseDocument
+} = require('../models');
+
+// Ensure uploads directory exists
+const uploadDir = path.join(__dirname, '../uploads');
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir, { recursive: true });
+}
 
 // Configure multer for file upload
-const upload = multer();
+const storage = multer.diskStorage({
+  destination: function(req, file, cb) {
+    const tempDir = path.join(uploadDir, 'temp');
+    if (!fs.existsSync(tempDir)) {
+      fs.mkdirSync(tempDir, { recursive: true });
+    }
+    cb(null, tempDir);
+  },
+  filename: function(req, file, cb) {
+    cb(null, `${Date.now()}-${file.originalname.replace(/[^a-zA-Z0-9.-]/g, '_')}`);
+  }
+});
+
+const upload = multer({
+  storage: storage,
+  limits: {
+    fileSize: 10 * 1024 * 1024 // 10MB limit
+  }
+});
 
 // Middleware to check if user has access to case
 const checkCaseAccess = async (req, res, next) => {
@@ -16,8 +50,9 @@ const checkCaseAccess = async (req, res, next) => {
     const userId = req.user.id;
     const userRole = req.user.role;
 
-    if (!userId) {
-      return res.status(400).json({ message: 'Missing user ID' });
+    if (!userId || !caseId) {
+      console.error('Missing required params:', { userId, caseId });
+      return res.status(400).json({ message: 'Missing required parameters' });
     }
 
     console.log('Checking case access:', { caseId, userId, role: userRole });
@@ -115,15 +150,14 @@ const checkCaseAccess = async (req, res, next) => {
 // Create new case
 router.post('/',
   authenticateToken,
-  // Move case access check after auth but before file upload
+  upload.array('documents'),
   async (req, res, next) => {
-    // Check if user is a client or admin
+    // Check user permissions
     if (req.user.role !== 'client' && req.user.role !== 'admin') {
       return res.status(403).json({ message: 'Only clients or admins can create cases' });
     }
     next();
   },
-  upload.array('documents'),
   [
     body('type')
       .isIn([
@@ -163,12 +197,49 @@ router.post('/',
       }
 
       // Create new case with validated data using Sequelize transaction
-      const newCase = await Case.create({
-        type: req.body.type,
-        description: req.body.description,
-        priority: req.body.priority || 'MEDIUM',
-        clientId: req.user.id,
-        status: 'OPEN'
+      const { sequelize } = require('../models');
+      const CaseDocument = require('../models/CaseDocument');
+      const newCase = await sequelize.transaction(async (t) => {
+        // Create the case
+        const createdCase = await Case.create({
+          type: req.body.type,
+          description: req.body.description,
+          priority: req.body.priority || 'MEDIUM',
+          clientId: req.user.id,
+          status: 'OPEN'
+        }, { transaction: t });
+
+        // Handle uploaded files
+        if (req.files && req.files.length > 0) {
+          // Create case directory
+          const caseDir = path.join(uploadDir, createdCase.id);
+          if (!fs.existsSync(caseDir)) {
+            fs.mkdirSync(caseDir, { recursive: true });
+          }
+
+          // Create document records
+          const documentPromises = req.files.map(file =>
+            CaseDocument.createWithFile({
+              caseId: createdCase.id,
+              uploadedBy: req.user.id
+            }, file, { transaction: t })
+          );
+
+          await Promise.all(documentPromises);
+
+          // Create timeline entry for documents
+          await Timeline.create({
+            caseId: createdCase.id,
+            action: 'Documents uploaded',
+            performedBy: req.user.id,
+            details: {
+              fileCount: req.files.length,
+              fileNames: req.files.map(f => f.originalname)
+            }
+          }, { transaction: t });
+        }
+
+        return createdCase;
       });
 
       // Create timeline entry
@@ -179,18 +250,22 @@ router.post('/',
         notes: 'New case submitted'
       });
 
-      // Handle file uploads if any
-      if (req.files && req.files.length > 0) {
-        console.log('Processing files:', req.files.length);
-        // Here you would process the files, perhaps upload them to storage
-        // and add their references to the case
-      }
-
       console.log('Case created successfully:', newCase.id);
 
-      // Fetch the created case with associated timeline
+      // Fetch the created case with associated data
       const createdCase = await Case.findByPk(newCase.id, {
-        include: [{ model: Timeline, as: 'activities' }]
+        include: [
+          {
+            model: Timeline,
+            as: 'activities',
+            order: [['createdAt', 'DESC']]
+          },
+          {
+            model: CaseDocument,
+            as: 'documents',
+            order: [['createdAt', 'DESC']]
+          }
+        ]
       });
 
       res.status(201).json(createdCase);
@@ -374,6 +449,15 @@ router.get('/:id', authenticateToken, checkCaseAccess, async (req, res) => {
               attributes: ['id', 'role']
             }
           ]
+        },
+        {
+          model: CaseDocument,
+          as: 'documents',
+          include: [{
+            model: User,
+            as: 'uploader',
+            attributes: ['id', 'role']
+          }]
         }
       ],
       order: [
@@ -745,6 +829,82 @@ router.post('/:id/accept',
       });
     }
 });
+
+// Upload documents to case
+router.post('/:id/documents',
+  authenticateToken,
+  checkCaseAccess,
+  upload.array('documents'),
+  async (req, res) => {
+    try {
+      const caseId = req.params.id;
+      const userId = req.user.id;
+
+      if (!req.files || req.files.length === 0) {
+        return res.status(400).json({ message: 'No files uploaded' });
+      }
+
+      const { sequelize } = require('../models');
+      const CaseDocument = require('../models/CaseDocument');
+
+      const result = await sequelize.transaction(async (t) => {
+        // Create document records using createWithFile
+        await Promise.all(
+          req.files.map(file =>
+            CaseDocument.createWithFile({
+              caseId,
+              uploadedBy: userId
+            }, file, { transaction: t })
+          )
+        );
+
+        // Add timeline entry
+        await Timeline.create({
+          caseId,
+          action: 'Documents uploaded',
+          performedBy: userId,
+          details: {
+            fileCount: req.files.length,
+            fileNames: req.files.map(f => f.originalname)
+          }
+        }, { transaction: t });
+
+        return await Case.findByPk(caseId, {
+          include: [
+            {
+              model: Timeline,
+              as: 'activities',
+              order: [['createdAt', 'DESC']],
+              include: [{
+                model: User,
+                as: 'performer',
+                attributes: ['id', 'role']
+              }]
+            }
+          ],
+          transaction: t
+        });
+      });
+
+      res.json(result);
+    } catch (error) {
+      // Clean up any uploaded files if transaction failed
+      if (req.files) {
+        req.files.forEach(file => {
+          if (file.path && fs.existsSync(file.path)) {
+            fs.unlinkSync(file.path);
+          }
+        });
+      }
+
+      console.error('Error uploading documents:', error);
+      res.status(500).json({
+        message: 'Error uploading documents',
+        error: process.env.NODE_ENV === 'development' ? error.message : undefined
+      });
+    }
+  }
+);
 
 // Add note to case
 router.post('/:id/notes',

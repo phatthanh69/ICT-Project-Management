@@ -1,46 +1,43 @@
 import axios from 'axios';
 
-// Create an instance for consistent API calling
+// Create axios instance with base URL
 const axiosInstance = axios.create({
   baseURL: process.env.REACT_APP_API_URL || '/api',
+  timeout: 10000,
   headers: {
     'Content-Type': 'application/json',
   }
 });
 
-// Add a request interceptor to include authentication token
+// Add request interceptor to include auth token in every request
 axiosInstance.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('token');
     if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
+      config.headers['Authorization'] = `Bearer ${token}`;
     }
     return config;
   },
   (error) => {
+    console.error('Request error interceptor:', error);
     return Promise.reject(error);
   }
 );
 
-// Add a response interceptor to handle common errors
+// Add response interceptor for better error handling
 axiosInstance.interceptors.response.use(
   (response) => {
     return response;
   },
   (error) => {
-    // Handle 401 Unauthorized errors (token expired)
-    if (error.response && error.response.status === 401) {
-      // Clear token and auth state
+    console.error('Response error interceptor:', error?.response?.data || error.message);
+    
+    // Handle token expiration
+    if (error.response?.status === 401) {
+      // If token expired or invalid, clear localStorage
       localStorage.removeItem('token');
-      // Dispatch logout action if Redux is available
-      if (window.store) {
-        window.store.dispatch({ type: 'auth/logout' });
-      }
-      // Only redirect if not already on login page
-      if (!window.location.pathname.includes('/login')) {
-        window.location.href = '/login';
-      }
     }
+    
     return Promise.reject(error);
   }
 );

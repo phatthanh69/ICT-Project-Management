@@ -8,12 +8,32 @@ export const login = createAsyncThunk(
   'auth/login',
   async (credentials, { rejectWithValue }) => {
     try {
+      console.log('Login attempt with:', { email: credentials.email, role: credentials.role });
       const response = await axiosInstance.post('/auth/login', credentials);
+      
+      // Log the entire response structure for debugging
+      console.log('Login response structure:', JSON.stringify(response.data, null, 2));
+      
       // Store token in localStorage
       localStorage.setItem('token', response.data.token);
-      return response.data;
+      
+      // Instead of rejecting, let's fix the data structure if needed
+      const responseData = {
+        token: response.data.token,
+        user: response.data.user || {}
+      };
+      
+      // Ensure user has a role property
+      if (responseData.user && !responseData.user.role && credentials.role) {
+        console.log('Adding missing role from credentials:', credentials.role);
+        responseData.user.role = credentials.role;
+      }
+      
+      return responseData;
     } catch (error) {
-      return rejectWithValue(error.response?.data?.message || 'Login failed');
+      const errorMessage = error.response?.data?.message || 'Login failed';
+      console.error('Login error:', errorMessage);
+      return rejectWithValue(errorMessage);
     }
   }
 );
@@ -80,17 +100,38 @@ const authSlice = createSlice({
         state.error = null;
       })
       .addCase(login.fulfilled, (state, action) => {
-        // Ensure token is saved before updating state
-        localStorage.setItem('token', action.payload.token);
+        // Log the payload received from our thunk
+        console.log('Login fulfilled payload:', action.payload);
+        
+        // Skip validation and just use what we have
+        const userData = action.payload.user || {};
+        const token = action.payload.token;
+        
+        if (!token) {
+          console.error('Missing token in login response');
+          state.error = 'Invalid login response: missing token';
+          state.loading = false;
+          return;
+        }
+        
+        // Set data regardless of complete validation
+        localStorage.setItem('token', token);
         state.isAuthenticated = true;
-        state.user = action.payload.user;
-        state.token = action.payload.token;
+        state.user = userData;
+        state.token = token;
         state.loading = false;
         state.error = null;
+        
+        console.log('Auth state updated:', { 
+          isAuthenticated: true,
+          user: userData,
+          hasToken: !!token
+        });
       })
       .addCase(login.rejected, (state, action) => {
+        console.error('Login rejected:', action.payload);
         state.loading = false;
-        state.error = action.payload;
+        state.error = action.payload || 'Login failed';
       })
       // Register
       .addCase(register.pending, (state) => {

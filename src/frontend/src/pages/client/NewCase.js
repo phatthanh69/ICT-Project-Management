@@ -18,9 +18,24 @@ import CaseForm from '../../components/cases/CaseForm';
 import DocumentUpload from '../../components/cases/DocumentUpload';
 import axiosInstance from '../../utils/axios';
 
-const steps = ['Case Details', 'Supporting Documents', 'Review'];
+const CASE_TYPES = [
+  { value: 'family', label: 'Family Law' },
+  { value: 'immigration', label: 'Immigration' },
+  { value: 'employment', label: 'Employment' },
+  { value: 'housing', label: 'Housing' },
+  { value: 'civil', label: 'Civil Law' },
+  { value: 'criminal', label: 'Criminal Law' },
+  { value: 'other', label: 'Other' }
+];
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || '';
+const PRIORITIES = [
+  { value: 'LOW', label: 'Low' },
+  { value: 'MEDIUM', label: 'Medium' },
+  { value: 'HIGH', label: 'High' },
+  { value: 'URGENT', label: 'Urgent' }
+];
+
+const steps = ['Case Details', 'Review'];
 
 const NewCase = () => {
   const [activeStep, setActiveStep] = useState(0);
@@ -29,6 +44,19 @@ const NewCase = () => {
   const navigate = useNavigate();
 
   const handleNext = () => {
+    // Validate form data before proceeding
+    if (activeStep === 0) {
+      if (!caseData.type || !caseData.description) {
+        alert('Please fill in all required fields (type and description)');
+        return;
+      }
+      
+      const validTypes = ['family', 'immigration', 'housing', 'employment', 'civil', 'criminal', 'other'];
+      if (!validTypes.includes(caseData.type)) {
+        alert('Please select a valid case type');
+        return;
+      }
+    }
     setActiveStep((prevStep) => prevStep + 1);
   };
 
@@ -39,12 +67,7 @@ const NewCase = () => {
   const handleCaseDataSubmit = (data) => {
     console.log('Case data submitted:', data);
     setCaseData(data);
-    handleNext();
-  };
-
-  const handleDocumentsSubmit = (files) => {
-    setDocuments(files);
-    handleNext();
+    // Don't automatically go to next step, let the user choose when to proceed
   };
 
   const handleSubmit = async () => {
@@ -61,6 +84,20 @@ const NewCase = () => {
       if (!validTypes.includes(caseData.type)) {
         console.error('Invalid case type:', caseData.type);
         alert('Please select a valid case type');
+        return;
+      }
+
+      // Validate documents
+      if (documents.length > 10) {
+        alert('Maximum 10 documents allowed');
+        return;
+      }
+
+      // Check file sizes
+      const maxSize = 10 * 1024 * 1024; // 10MB
+      const oversizedFiles = documents.filter(file => file.size > maxSize);
+      if (oversizedFiles.length > 0) {
+        alert(`Some files are too large (max 10MB): ${oversizedFiles.map(f => f.name).join(', ')}`);
         return;
       }
 
@@ -107,54 +144,95 @@ const NewCase = () => {
   const getStepContent = (step) => {
     switch (step) {
       case 0:
-        return <CaseForm onSubmit={handleCaseDataSubmit} initialData={caseData} />;
-      case 1:
         return (
           <Box>
-            <Typography variant="h6" gutterBottom>Upload Supporting Documents</Typography>
-            <Typography variant="body2" color="textSecondary" gutterBottom>
-              Please upload any relevant documents that support your case (PDF, Word documents, or images)
-            </Typography>
-            <DocumentUpload onDocumentsChange={handleDocumentsSubmit} />
+            <Typography variant="h6" gutterBottom>Case Information</Typography>
+            <Paper sx={{ p: 3, mb: 3 }}>
+              <CaseForm
+                onSubmit={handleCaseDataSubmit}
+                initialData={caseData}
+                hideActions={true} // Hide the form's default buttons
+              />
+            </Paper>
+
+            <Typography variant="h6" gutterBottom sx={{ mt: 4 }}>Supporting Documents</Typography>
+            <Paper sx={{ p: 3 }}>
+              <Typography variant="body2" color="textSecondary" gutterBottom>
+                Please upload any relevant documents that support your case (PDF, Word documents, or images)
+              </Typography>
+              <DocumentUpload
+                onFilesSelected={setDocuments}
+                documents={documents}
+                skipUpload={true} // Skip immediate upload during new case creation
+              />
+            </Paper>
           </Box>
         );
-      case 2:
+      case 1:
         return (
           <Box>
             <Typography variant="h6" gutterBottom>Review Your Case</Typography>
             <Paper sx={{ p: 2, mb: 2 }}>
               <Typography variant="subtitle1" gutterBottom>Case Details</Typography>
-              {Object.keys(caseData).length === 0 ? (
-                <Typography variant="body2" color="error">No case data available. Please go back and complete the form.</Typography>
+              {!caseData.type || !caseData.description ? (
+                <Typography variant="body2" color="error">
+                  Required information is missing. Please go back and complete the form.
+                </Typography>
               ) : (
-                <Grid container spacing={2}>
-                  {Object.entries(caseData).map(([key, value]) => (
-                    <Grid item xs={12} sm={6} key={key}>
-                      <Typography variant="subtitle2" color="textSecondary">
-                        {key.charAt(0).toUpperCase() + key.slice(1)}
-                      </Typography>
-                      <Typography variant="body1" gutterBottom>
-                        {value || 'Not provided'}
+                <Grid container spacing={3}>
+                  <Grid item xs={12} sm={6}>
+                    <Typography variant="subtitle2" color="textSecondary">Type</Typography>
+                    <Typography variant="body1" gutterBottom sx={{ ml: 1 }}>
+                      {CASE_TYPES.find(t => t.value === caseData.type)?.label || caseData.type}
+                    </Typography>
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <Typography variant="subtitle2" color="textSecondary">Priority</Typography>
+                    <Typography variant="body1" gutterBottom sx={{ ml: 1 }}>
+                      {PRIORITIES.find(p => p.value === caseData.priority)?.label || 'Medium'}
+                    </Typography>
+                  </Grid>
+                  <Grid item xs={12}>
+                    <Typography variant="subtitle2" color="textSecondary">Description</Typography>
+                    <Typography variant="body1" gutterBottom sx={{ ml: 1 }}>
+                      {caseData.description}
+                    </Typography>
+                  </Grid>
+                  {caseData.additionalNotes && (
+                    <Grid item xs={12}>
+                      <Typography variant="subtitle2" color="textSecondary">Additional Notes</Typography>
+                      <Typography variant="body1" gutterBottom sx={{ ml: 1 }}>
+                        {caseData.additionalNotes}
                       </Typography>
                     </Grid>
-                  ))}
+                  )}
                 </Grid>
               )}
             </Paper>
             
             <Paper sx={{ p: 2 }}>
-              <Typography variant="subtitle1" gutterBottom>Attached Documents</Typography>
-              {documents.length > 0 ? (
-                <List>
-                  {documents.map((doc, index) => (
-                    <ListItem key={index}>
-                      <ListItemText primary={doc.name} secondary={`${(doc.size / 1024 / 1024).toFixed(2)} MB`} />
-                    </ListItem>
-                  ))}
-                </List>
-              ) : (
-                <Typography variant="body2" color="textSecondary">No documents attached</Typography>
-              )}
+              <Typography variant="subtitle1" gutterBottom>Supporting Documents</Typography>
+              <Box sx={{ mt: 2 }}>
+                {documents && documents.length > 0 ? (
+                  <Box>
+                    <Typography variant="body2" color="primary" gutterBottom>
+                      {documents.length} document{documents.length !== 1 ? 's' : ''} ready to submit
+                    </Typography>
+                    <List>
+                      {documents.map((doc, index) => (
+                        <ListItem key={index}>
+                          <ListItemText
+                            primary={doc.name}
+                            secondary={`${(doc.size / 1024 / 1024).toFixed(2)} MB`}
+                          />
+                        </ListItem>
+                      ))}
+                    </List>
+                  </Box>
+                ) : (
+                  <Typography variant="body2" color="textSecondary">No documents attached</Typography>
+                )}
+              </Box>
             </Paper>
           </Box>
         );
@@ -197,8 +275,9 @@ const NewCase = () => {
                 variant="contained"
                 onClick={handleNext}
                 color="primary"
+                disabled={!caseData.type || !caseData.description} // Disable if required fields are empty
               >
-                Next
+                Review Case
               </Button>
             )}
           </Box>

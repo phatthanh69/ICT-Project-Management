@@ -341,46 +341,36 @@ const AdminDashboard = () => {
   // Prepare activity data for table with safe transformations
   const prepareActivityData = () => {
     return stats.recentActivity.map(activity => {
-      // Create a unique ID if none exists
-      const id = activity.id || Math.random().toString();
-      
-      // Safely extract and format action
-      const action = typeof activity.action === 'object' 
-        ? getStatusString(activity.action) 
-        : safeString(activity.action);
-      
-      // Safely extract and format details
-      const details = (() => {
-        if (!activity.details) return 'N/A';
-        if (typeof activity.details === 'object') {
-          return safeString(activity.details);
+      // Format details properly based on the actual API structure
+      const formatDetails = () => {
+        if (!activity.details) return 'No details';
+        
+        // Handle file uploads specifically
+        if (activity.details.fileCount && activity.details.fileNames) {
+          return `Uploaded ${activity.details.fileCount} file(s): ${activity.details.fileNames.join(', ')}`;
         }
-        return activity.details;
-      })();
+        
+        // For empty objects
+        if (Object.keys(activity.details).length === 0) {
+          return '-';
+        }
+        
+        // For other types of details
+        return safeString(activity.details);
+      };
       
-      // Safely format performer
-      const performer = activity.performer 
-        ? safeString(activity.performer) 
-        : 'Unknown';
-      
-      // Safely format timestamp
-      const timestamp = activity.timestamp 
-        ? formatDate(activity.timestamp) 
-        : 'Unknown date';
-      
-      // Safely format case number
-      const caseNumber = activity.caseNumber 
-        ? String(activity.caseNumber) 
-        : 'Unknown';
+      // Get performer name safely
+      const performerName = activity.performer?.name || 'Unknown';
       
       return {
-        id,
-        action,
-        details,
-        performer,
-        timestamp,
-        caseNumber,
-        // Include original data for column formatters
+        id: activity.id || Math.random().toString(),
+        action: activity.action || 'Unknown Action',
+        details: formatDetails(),
+        performer: performerName,
+        performerRole: activity.performer?.role || 'Unknown',
+        timestamp: activity.timestamp ? new Date(activity.timestamp).toLocaleString() : 'Unknown date',
+        caseNumber: activity.caseNumber || 'Unknown',
+        // Include original data for reference if needed
         rawData: activity
       };
     });
@@ -538,7 +528,7 @@ const AdminDashboard = () => {
               <Typography variant="h6">Recent Activity</Typography>
               <Button
                 endIcon={<ArrowForwardIcon />}
-                onClick={() => navigate('/admin/activity-log')}
+                onClick={() => navigate('/admin/cases')}
               >
                 View All
               </Button>
@@ -546,44 +536,17 @@ const AdminDashboard = () => {
             {stats.recentActivity.length > 0 ? (
               <DataTable
                 columns={[
-                  { field: 'action', headerName: 'Action', width: 150 },
-                  { field: 'details', headerName: 'Description', flex: 1 },
-                  {
-                    field: 'performer',
-                    headerName: 'By',
-                    width: 150,
-                    renderCell: (params) => {
-                      // Use renderCell instead of valueFormatter for better control
-                      if (params.value && typeof params.value === 'object') {
-                        return params.value.name || params.value.fullName || 'Unknown';
-                      }
-                      return params.value || 'Unknown';
-                    }
-                  },
+                  { field: 'action', headerName: 'Action', width: 180 },
+                  { field: 'details', headerName: 'Details', flex: 1 },
                   {
                     field: 'timestamp',
                     headerName: 'Time',
-                    width: 200,
-                    renderCell: (params) => {
-                      if (!params.value) return 'Unknown';
-                      try {
-                        if (typeof params.value === 'string') {
-                          return params.value;
-                        }
-                        // If it's a date object or string date
-                        return new Date(params.value).toLocaleString();
-                      } catch (e) {
-                        return 'Invalid date';
-                      }
-                    }
+                    width: 200
                   },
                   {
                     field: 'caseNumber',
                     headerName: 'Case',
-                    width: 150,
-                    renderCell: (params) => {
-                      return params.value ? String(params.value) : 'Unknown';
-                    }
+                    width: 150
                   }
                 ]}
                 data={prepareActivityData()}

@@ -41,7 +41,7 @@ const CASE_STATUSES = [
   { value: 'CLOSED', label: 'Closed' }
 ];
 
-const CaseForm = ({ initialData, onSubmit, onCancel, loading, error }) => {
+const CaseForm = ({ initialData, onSubmit, onCancel, loading, error, hideActions }) => {
   const [formData, setFormData] = useState({
     type: '',
     priority: 'MEDIUM',
@@ -80,10 +80,14 @@ const CaseForm = ({ initialData, onSubmit, onCancel, loading, error }) => {
 
   const handleChange = (event) => {
     const { name, value } = event.target;
-    setFormData(prev => ({
-      ...prev,
+    const updatedData = {
+      ...formData,
       [name]: value
-    }));
+    };
+    setFormData(updatedData);
+    
+    // Notify parent of changes immediately
+    onSubmit?.(updatedData);
 
     // Clear validation error when field is updated
     if (validationErrors[name]) {
@@ -93,13 +97,20 @@ const CaseForm = ({ initialData, onSubmit, onCancel, loading, error }) => {
       }));
     }
   };
+const handleSubmit = (event) => {
+  event.preventDefault();
+  if (validateForm()) {
+    onSubmit(formData);
+  }
+};
 
-  const handleSubmit = (event) => {
-    event.preventDefault();
-    if (validateForm()) {
-      onSubmit(formData);
-    }
-  };
+// Validate form when mounting with initial data
+useEffect(() => {
+  if (initialData && Object.keys(initialData).length > 0) {
+    validateForm();
+  }
+}, [initialData]);
+
 
   return (
     <Paper sx={{ p: 3 }}>
@@ -210,27 +221,29 @@ const CaseForm = ({ initialData, onSubmit, onCancel, loading, error }) => {
             </Grid>
           )}
 
-          <Grid item xs={12}>
-            <Box display="flex" justifyContent="flex-end" gap={2}>
-              <Button
-                type="button"
-                onClick={onCancel}
-                startIcon={<Cancel />}
-                disabled={loading}
-              >
-                Cancel
-              </Button>
-              <Button
-                type="submit"
-                variant="contained"
-                color="primary"
-                startIcon={loading ? <CircularProgress size={24} /> : <Save />}
-                disabled={loading}
-              >
-                {loading ? 'Saving...' : initialData ? 'Update Case' : 'Create Case'}
-              </Button>
-            </Box>
-          </Grid>
+          {!hideActions && (
+            <Grid item xs={12}>
+              <Box display="flex" justifyContent="flex-end" gap={2}>
+                <Button
+                  type="button"
+                  onClick={onCancel}
+                  startIcon={<Cancel />}
+                  disabled={loading}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  variant="contained"
+                  color="primary"
+                  startIcon={loading ? <CircularProgress size={24} /> : <Save />}
+                  disabled={loading}
+                >
+                  {loading ? 'Saving...' : initialData ? 'Update Case' : 'Create Case'}
+                </Button>
+              </Box>
+            </Grid>
+          )}
         </Grid>
       </form>
     </Paper>

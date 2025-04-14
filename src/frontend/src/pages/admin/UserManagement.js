@@ -34,10 +34,11 @@ const UserManagement = () => {
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [formData, setFormData] = useState({
-    name: '',
+    firstName: '',
+    lastName: '',
     email: '',
-    role: '',
-    active: true,
+    phone: '',
+    role: ''
   });
 
   useEffect(() => {
@@ -59,18 +60,20 @@ const UserManagement = () => {
     if (user) {
       setEditUser(user);
       setFormData({
-        name: user.name,
+        firstName: user.firstName,
+        lastName: user.lastName,
         email: user.email,
-        role: user.role,
-        active: user.active,
+        phone: user.phone || '',
+        role: user.role
       });
     } else {
       setEditUser(null);
       setFormData({
-        name: '',
+        firstName: '',
+        lastName: '',
         email: '',
-        role: '',
-        active: true,
+        phone: '',
+        role: ''
       });
     }
     setDialogOpen(true);
@@ -80,17 +83,18 @@ const UserManagement = () => {
     setDialogOpen(false);
     setEditUser(null);
     setFormData({
-      name: '',
+      firstName: '',
+      lastName: '',
       email: '',
-      role: '',
-      active: true,
+      phone: '',
+      role: ''
     });
   };
 
   const handleSubmit = async () => {
     try {
       if (editUser) {
-        await axiosInstance.put(`/api/admin/users/${editUser.id}`, formData);
+        await axiosInstance.patch(`/admin/users/${editUser.id}`, formData);
       } else {
         await axiosInstance.post('/admin/users', formData);
       }
@@ -104,7 +108,7 @@ const UserManagement = () => {
   const handleDeleteUser = async (userId) => {
     if (window.confirm('Are you sure you want to delete this user?')) {
       try {
-        await axiosInstance.delete(`/api/admin/users/${userId}`);
+        await axiosInstance.delete(`/admin/users/${userId}`);
         fetchUsers();
       } catch (err) {
         setError('Failed to delete user. Please try again.');
@@ -160,8 +164,8 @@ const UserManagement = () => {
             <TableRow>
               <TableCell>Name</TableCell>
               <TableCell>Email</TableCell>
+              <TableCell>Phone</TableCell>
               <TableCell>Role</TableCell>
-              <TableCell>Status</TableCell>
               <TableCell>Created</TableCell>
               <TableCell>Actions</TableCell>
             </TableRow>
@@ -171,10 +175,10 @@ const UserManagement = () => {
               .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
               .map((user) => (
                 <TableRow key={user.id}>
-                  <TableCell>{user.name}</TableCell>
+                  <TableCell>{`${user.firstName} ${user.lastName}`}</TableCell>
                   <TableCell>{user.email}</TableCell>
+                  <TableCell>{user.phone || 'N/A'}</TableCell>
                   <TableCell>{user.role}</TableCell>
-                  <TableCell>{user.active ? 'Active' : 'Inactive'}</TableCell>
                   <TableCell>{format(new Date(user.createdAt), 'PPP')}</TableCell>
                   <TableCell>
                     <IconButton
@@ -214,11 +218,19 @@ const UserManagement = () => {
           <TextField
             autoFocus
             margin="dense"
-            label="Name"
+            label="First Name"
             type="text"
             fullWidth
-            value={formData.name}
-            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+            value={formData.firstName}
+            onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
+          />
+          <TextField
+            margin="dense"
+            label="Last Name"
+            type="text"
+            fullWidth
+            value={formData.lastName}
+            onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
           />
           <TextField
             margin="dense"
@@ -227,6 +239,14 @@ const UserManagement = () => {
             fullWidth
             value={formData.email}
             onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+          />
+          <TextField
+            margin="dense"
+            label="Phone"
+            type="tel"
+            fullWidth
+            value={formData.phone}
+            onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
           />
           <TextField
             margin="dense"
@@ -239,17 +259,6 @@ const UserManagement = () => {
             <MenuItem value="client">Client</MenuItem>
             <MenuItem value="solicitor">Solicitor</MenuItem>
             <MenuItem value="admin">Admin</MenuItem>
-          </TextField>
-          <TextField
-            margin="dense"
-            label="Status"
-            select
-            fullWidth
-            value={formData.active}
-            onChange={(e) => setFormData({ ...formData, active: e.target.value })}
-          >
-            <MenuItem value={true}>Active</MenuItem>
-            <MenuItem value={false}>Inactive</MenuItem>
           </TextField>
         </DialogContent>
         <DialogActions>

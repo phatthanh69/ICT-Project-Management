@@ -143,15 +143,22 @@ const CaseDetails = () => {
 
   // Handle status update
   const handleStatusUpdate = async (newStatus) => {
+    // Check user permissions
     if (user.role !== 'admin' && user.role !== 'solicitor') {
       setError('You do not have permission to update case status');
       return;
     }
     
-    if (user.role === 'solicitor' && 
-        (!caseData.assignedSolicitor || caseData.assignedSolicitor.User.id !== user.id)) {
-      setError('You must be assigned to this case to update its status');
-      return;
+    // For solicitors, check if they are assigned to the case
+    if (user.role === 'solicitor') {
+      const isAssignedSolicitor = caseData.assignedSolicitor &&
+                                 caseData.assignedSolicitor.User &&
+                                 caseData.assignedSolicitor.User.id === user.id;
+      
+      if (!isAssignedSolicitor) {
+        setError('You must be assigned to this case to update its status');
+        return;
+      }
     }
     
     try {
@@ -506,7 +513,12 @@ const CaseDetails = () => {
             <Typography variant="h6" gutterBottom>
               Documents
             </Typography>
-            <DocumentUpload caseId={id} />
+            <DocumentUpload
+              caseId={id}
+              onUploadComplete={(updatedCase) => {
+                setCaseData(updatedCase);
+              }}
+            />
           </Paper>
         </Grid>
       </Grid>
